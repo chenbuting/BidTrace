@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="cursor"] {
+  color-scheme: light;
+  --background: 247 247 244;
+  --foreground: 38 37 30;
+  --card: 255 255 255;
+  --border: 0 0 0;
+  --border-alpha: 0.08;
+  --muted: 107 107 107;
+  --accent: 245 78 0;
+}
+
+body {
+  @apply min-h-screen antialiased;
+  color: rgb(var(--foreground));
+  background-color: rgb(var(--background));
+  font-family: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.011em;
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.15);
+  border-radius: 999px;
+}
+
+@layer components {
+  .app-shell {
+    @apply relative min-h-screen;
+    color: rgb(var(--foreground));
+    background-color: rgb(var(--background));
+  }
+
+  .glass-card {
+    @apply rounded-xl border border-black/[0.08] bg-white;
+  }
+}

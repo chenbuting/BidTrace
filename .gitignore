@@ -1,0 +1,41 @@
+# 依赖与构建
+node_modules/
+dist/
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+apps/web/node_modules/
+apps/web/dist/
+
+# 本地数据与密钥（勿提交：含平台密码、业务数据、备份）
+apps/api/data/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+
+# 备份与临时
+*.bak
+*_tmp*
+_tmp*
+tmp/
+*.log
+
+# 系统与 IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 上传/导出的 Excel 样本（如含真实业务数据）
+*.xlsx
+!docs/**/*.xlsx

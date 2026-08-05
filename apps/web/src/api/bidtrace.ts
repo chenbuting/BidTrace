@@ -1,0 +1,543 @@
+import { api } from "./client";
+
+export type UserInfo = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  role_label: string;
+  permissions: string[];
+};
+
+export type Platform = {
+  id: number;
+  name: string;
+  url: string;
+  login_method: string;
+  login_account: string;
+  login_password: string;
+  has_ca: string;
+  ca_password: string;
+  priority: string;
+  status: string;
+  weight: number;
+  remark: string;
+};
+
+export type Inquiry = {
+  id: number;
+  register_date: string;
+  platform_name: string;
+  project_name: string;
+  is_bid: string;
+  is_registered: string;
+  file_received: string;
+  is_paid: string;
+  overview_done: string;
+  skip_reason_category: string;
+  skip_reason_detail: string;
+  deadline: string;
+  created_by?: number;
+};
+
+export type Dashboard = {
+  platform_total: number;
+  platform_active: number;
+  platform_maintain: number;
+  inquiry_total: number;
+  inquiry_bid_yes: number;
+  recent_by_date: { date: string; count: number }[];
+};
+
+export type AppUser = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  role_label: string;
+  is_active: number;
+  overrides: Record<string, boolean>;
+  permissions: string[];
+};
+
+export async function login(username: string, password: string) {
+  return api<{ ok: boolean; user: UserInfo }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function logout() {
+  return api<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+}
+
+export async function fetchMe() {
+  return api<{ user: UserInfo }>("/api/auth/me");
+}
+
+export async function fetchDashboard() {
+  return api<Dashboard>("/api/dashboard");
+}
+
+export async function fetchPlatforms(params: Record<string, string | number>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  return api<{ total: number; items: Platform[] }>(`/api/platforms?${qs}`);
+}
+
+export async function deletePlatforms(ids: number[]) {
+  return api<{ ok: boolean; deleted: number }>("/api/platforms/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function savePlatform(data: Partial<Platform> & { name: string }, id?: number) {
+  if (id) {
+    return api<{ item: Platform }>(`/api/platforms/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+  return api<{ item: Platform }>("/api/platforms", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePlatform(id: number) {
+  return api<{ ok: boolean }>(`/api/platforms/${id}`, { method: "DELETE" });
+}
+
+export async function importPlatforms(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api<{ ok: boolean; imported: number }>("/api/platforms/import", {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export type PlatformBackupInfo = {
+  id: number;
+  reason: string;
+  row_count: number;
+  created_by?: number;
+  created_at: string;
+};
+
+export type ImportConflictDiff = {
+  field: string;
+  label: string;
+  old: string;
+  new: string;
+};
+
+export type ImportConflict = {
+  row_index: number;
+  existing_id: number;
+  name: string;
+  url: string;
+  identical: boolean;
+  diffs: ImportConflictDiff[];
+};
+
+export async function previewPlatformImport(file: File, mode: "incremental" | "full") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  return api<{
+    mode: string;
+    total: number;
+    new_count: number;
+    conflict_count: number;
+    conflicts: ImportConflict[];
+    mode_label: string;
+    mode_desc: string;
+    latest_backup: PlatformBackupInfo | null;
+  }>("/api/platforms/import/preview", { method: "POST", body: fd });
+}
+
+export async function commitPlatformImport(
+  file: File,
+  mode: "incremental" | "full",
+  decisions: { row_index: number; existing_id: number; action: "keep" | "overwrite" }[],
+) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  fd.append("decisions_json", JSON.stringify(decisions));
+  return api<{
+    ok: boolean;
+    mode: string;
+    inserted: number;
+    updated: number;
+    kept: number;
+    backup?: { id: number; row_count: number };
+  }>("/api/platforms/import/commit", { method: "POST", body: fd });
+}
+
+export async function fetchLatestPlatformBackup() {
+  return api<{ backup: PlatformBackupInfo | null }>("/api/platforms/backup/latest");
+}
+
+export async function restorePlatformBackup() {
+  return api<{ ok: boolean; restored: number; backup_id?: number; backup_at?: string }>(
+    "/api/platforms/backup/restore",
+    { method: "POST" },
+  );
+}
+
+export async function exportPlatforms(params: Record<string, string | number> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await fetch(`/api/platforms/export${suffix}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("导出失败");
+  return res.blob();
+}
+
+export async function downloadPlatformTemplate() {
+  const res = await fetch("/api/platforms/template", { credentials: "same-origin" });
+  if (!res.ok) throw new Error("下载模板失败");
+  return res.blob();
+}
+
+export async function fetchPlatformOptions() {
+  return api<{ items: string[] }>("/api/platforms/options");
+}
+
+export async function fetchInquiries(params: Record<string, string | number>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  return api<{ total: number; items: Inquiry[] }>(`/api/inquiries?${qs}`);
+}
+
+export async function saveInquiry(data: Partial<Inquiry>, id?: number) {
+  if (id) {
+    return api<{ item: Inquiry }>(`/api/inquiries/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+  return api<{ item: Inquiry }>("/api/inquiries", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteInquiry(id: number) {
+  return api<{ ok: boolean }>(`/api/inquiries/${id}`, { method: "DELETE" });
+}
+
+export async function deleteInquiries(ids: number[]) {
+  return api<{ ok: boolean; deleted: number }>("/api/inquiries/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function importInquiries(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api<{ ok: boolean; imported: number }>("/api/inquiries/import", {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function exportInquiries(params: Record<string, string | number> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await fetch(`/api/inquiries/export${suffix}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("导出失败");
+  return res.blob();
+}
+
+export async function downloadInquiryTemplate() {
+  const res = await fetch("/api/inquiries/template", { credentials: "same-origin" });
+  if (!res.ok) throw new Error("下载模板失败");
+  return res.blob();
+}
+
+export async function fetchUsers() {
+  return api<{ items: AppUser[] }>("/api/users");
+}
+
+export async function createUser(body: {
+  username: string;
+  password: string;
+  display_name: string;
+  role: string;
+}) {
+  return api<{ item: AppUser }>("/api/users", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateUser(
+  id: number,
+  body: { display_name?: string; role?: string; is_active?: boolean; password?: string },
+) {
+  return api<{ item: AppUser }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function setUserPerms(id: number, overrides: Record<string, boolean>) {
+  return api<{ overrides: Record<string, boolean>; permissions: string[] }>(
+    `/api/users/${id}/permissions`,
+    { method: "PUT", body: JSON.stringify({ overrides }) },
+  );
+}
+
+export async function fetchMeta() {
+  return api<{
+    permissions: { code: string; label: string }[];
+    roles: { code: string; label: string }[];
+  }>("/api/meta/permissions");
+}
+
+export async function fetchAudit(limit = 100) {
+  return api<{ items: { id: number; username: string; action: string; target: string; detail: string; created_at: string }[] }>(
+    `/api/audit?limit=${limit}`,
+  );
+}
+
+export type BidProject = {
+  id: number;
+  serial_no: string;
+  open_time: string;
+  bidder: string;
+  project_name: string;
+  platform: string;
+  remark: string;
+  is_won: string;
+  win_amount: string;
+  is_void: string;
+  bid_amount: string;
+  payment_method: string;
+};
+
+export type BidDeposit = {
+  id: number;
+  serial_no: string;
+  apply_time: string;
+  project_name: string;
+  payee: string;
+  platform: string;
+  amount: string;
+  bidder: string;
+  is_returned: string;
+  return_contact: string;
+  remark: string;
+};
+
+export type StatsBackupInfo = PlatformBackupInfo;
+
+export type StatsImportConflict = {
+  row_index: number;
+  existing_id: number;
+  identical: boolean;
+  diffs: ImportConflictDiff[];
+  project_name?: string;
+  open_time?: string;
+  platform?: string;
+  apply_time?: string;
+  payee?: string;
+  name?: string;
+  url?: string;
+};
+
+export type StatsImportPreview = {
+  mode: string;
+  total: number;
+  new_count: number;
+  conflict_count: number;
+  conflicts: StatsImportConflict[];
+  mode_label: string;
+  mode_desc: string;
+  latest_backup: StatsBackupInfo | null;
+};
+
+export type StatsImportCommitResult = {
+  ok: boolean;
+  mode: string;
+  inserted: number;
+  updated: number;
+  kept: number;
+  backup?: { id: number; row_count: number };
+};
+
+export async function fetchBidProjects(params: Record<string, string | number>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  return api<{ total: number; items: BidProject[] }>(`/api/bid-projects?${qs}`);
+}
+
+export async function saveBidProject(data: Partial<BidProject> & { project_name?: string }, id?: number) {
+  if (id) {
+    return api<{ item: BidProject }>(`/api/bid-projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+  return api<{ item: BidProject }>("/api/bid-projects", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteBidProject(id: number) {
+  return api<{ ok: boolean }>(`/api/bid-projects/${id}`, { method: "DELETE" });
+}
+
+export async function deleteBidProjects(ids: number[]) {
+  return api<{ ok: boolean; deleted: number }>("/api/bid-projects/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function previewBidProjectImport(file: File, mode: "incremental" | "full") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  return api<StatsImportPreview>("/api/bid-projects/import/preview", { method: "POST", body: fd });
+}
+
+export async function commitBidProjectImport(
+  file: File,
+  mode: "incremental" | "full",
+  decisions: { row_index: number; existing_id: number; action: "keep" | "overwrite" }[],
+) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  fd.append("decisions_json", JSON.stringify(decisions));
+  return api<StatsImportCommitResult>("/api/bid-projects/import/commit", { method: "POST", body: fd });
+}
+
+export async function fetchLatestBidProjectBackup() {
+  return api<{ backup: StatsBackupInfo | null }>("/api/bid-projects/backup/latest");
+}
+
+export async function restoreBidProjectBackup() {
+  return api<{ ok: boolean; restored: number; backup_id?: number; backup_at?: string }>(
+    "/api/bid-projects/backup/restore",
+    { method: "POST" },
+  );
+}
+
+export async function exportBidProjects(params: Record<string, string | number> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await fetch(`/api/bid-projects/export${suffix}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("导出失败");
+  return res.blob();
+}
+
+export async function downloadBidProjectTemplate() {
+  const res = await fetch("/api/bid-projects/template", { credentials: "same-origin" });
+  if (!res.ok) throw new Error("下载模板失败");
+  return res.blob();
+}
+
+export async function fetchBidDeposits(params: Record<string, string | number>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  return api<{ total: number; items: BidDeposit[] }>(`/api/bid-deposits?${qs}`);
+}
+
+export async function saveBidDeposit(data: Partial<BidDeposit>, id?: number) {
+  if (id) {
+    return api<{ item: BidDeposit }>(`/api/bid-deposits/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+  return api<{ item: BidDeposit }>("/api/bid-deposits", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteBidDeposit(id: number) {
+  return api<{ ok: boolean }>(`/api/bid-deposits/${id}`, { method: "DELETE" });
+}
+
+export async function deleteBidDeposits(ids: number[]) {
+  return api<{ ok: boolean; deleted: number }>("/api/bid-deposits/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function previewBidDepositImport(file: File, mode: "incremental" | "full") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  return api<StatsImportPreview>("/api/bid-deposits/import/preview", { method: "POST", body: fd });
+}
+
+export async function commitBidDepositImport(
+  file: File,
+  mode: "incremental" | "full",
+  decisions: { row_index: number; existing_id: number; action: "keep" | "overwrite" }[],
+) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  fd.append("decisions_json", JSON.stringify(decisions));
+  return api<StatsImportCommitResult>("/api/bid-deposits/import/commit", { method: "POST", body: fd });
+}
+
+export async function fetchLatestBidDepositBackup() {
+  return api<{ backup: StatsBackupInfo | null }>("/api/bid-deposits/backup/latest");
+}
+
+export async function restoreBidDepositBackup() {
+  return api<{ ok: boolean; restored: number; backup_id?: number; backup_at?: string }>(
+    "/api/bid-deposits/backup/restore",
+    { method: "POST" },
+  );
+}
+
+export async function exportBidDeposits(params: Record<string, string | number> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await fetch(`/api/bid-deposits/export${suffix}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("导出失败");
+  return res.blob();
+}
+
+export async function downloadBidDepositTemplate() {
+  const res = await fetch("/api/bid-deposits/template", { credentials: "same-origin" });
+  if (!res.ok) throw new Error("下载模板失败");
+  return res.blob();
+}
+
+/** 下载 blob 为文件 */
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
