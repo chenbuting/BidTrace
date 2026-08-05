@@ -100,6 +100,19 @@ def create_stats_router(
         )
         return {"total": total, "items": items}
 
+    @router.get("/bid-projects/calendar")
+    def api_bid_projects_calendar(
+        year: int = Query(..., ge=2000, le=2100),
+        month: int = Query(..., ge=1, le=12),
+        bidder: str = "",
+        user: dict[str, Any] = Depends(require_perm("project.view")),
+    ) -> dict[str, Any]:
+        """开标日历 / 投标员排班。"""
+        try:
+            return bs.bid_project_calendar(year=year, month=month, bidder=bidder)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.get("/bid-projects/template")
     def api_bid_projects_template(
         user: dict[str, Any] = Depends(require_perm("project.import")),

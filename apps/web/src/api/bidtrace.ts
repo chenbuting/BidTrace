@@ -354,6 +354,37 @@ export type BidProject = {
   payment_method: string;
 };
 
+export type CalendarProjectItem = {
+  id: number;
+  open_time: string;
+  open_time_raw?: string;
+  bidder: string;
+  project_name: string;
+  platform: string;
+  is_won: string;
+  is_void: string;
+  remark: string;
+};
+
+export type BidProjectCalendar = {
+  year: number;
+  month: number;
+  bidder: string;
+  month_total: number;
+  unscheduled_count: number;
+  bidders: string[];
+  days: { date: string; count: number; bidders: string[] }[];
+  by_date: Record<string, CalendarProjectItem[]>;
+  suggest?: { year: number; month: number } | null;
+};
+
+/** 开标日历（按月 + 投标员） */
+export async function fetchBidProjectCalendar(year: number, month: number, bidder = "") {
+  const qs = new URLSearchParams({ year: String(year), month: String(month) });
+  if (bidder) qs.set("bidder", bidder);
+  return api<BidProjectCalendar>(`/api/bid-projects/calendar?${qs}`);
+}
+
 export type BidDeposit = {
   id: number;
   serial_no: string;

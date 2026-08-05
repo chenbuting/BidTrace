@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  CalendarDays,
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/charts", label: "数据看板", icon: BarChart3, perm: null as string | null },
   { to: "/platforms", label: "平台账号", icon: Waypoints, perm: "platform.view" },
   { to: "/projects", label: "投标项目", icon: FolderKanban, perm: "project.view" },
+  { to: "/calendar", label: "开标日历", icon: CalendarDays, perm: "project.view" },
   { to: "/deposits", label: "投标保证金", icon: Wallet, perm: "deposit.view" },
   { to: "/inquiries", label: "询标报名", icon: ClipboardList, perm: "inquiry.view_all|inquiry.view_own" },
   { to: "/users", label: "用户权限", icon: Users, perm: "system.users" },

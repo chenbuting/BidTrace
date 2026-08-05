@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "@/pages/AppLayout";
 import { BidProjectsPage } from "@/pages/BidProjectsPage";
+import { CalendarPage } from "@/pages/CalendarPage";
 import { ChartsPage } from "@/pages/ChartsPage";
 import { DepositsPage } from "@/pages/DepositsPage";
 import { HomePage } from "@/pages/HomePage";
@@ -20,6 +21,7 @@ export function App() {
         <Route path="charts" element={<ChartsPage />} />
         <Route path="platforms" element={<PlatformsPage />} />
         <Route path="projects" element={<BidProjectsPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="deposits" element={<DepositsPage />} />
         <Route path="inquiries" element={<InquiriesPage />} />
         <Route path="users" element={<UsersPage />} />

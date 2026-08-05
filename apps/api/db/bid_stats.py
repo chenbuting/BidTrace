@@ -92,6 +92,27 @@ def _normalize_date(raw: str) -> str:
     return s
 
 
+def _open_date_for_calendar(raw: str) -> str:
+    """从开标时间抽出日历用日期 YYYY-MM-DD。
+
+    兼容：2026-05-14、2026-5-14、2026-02-02-9:00、2025-10-27-9:30:00。
+    """
+    import re
+
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if len(s) == 8 and s.isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if not m:
+        return ""
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1 <= mo <= 12 and 1 <= d <= 31):
+        return ""
+    return f"{y:04d}-{mo:02d}-{d:02d}"
+
+
 def project_match_key(open_time: Any, project_name: Any, platform: Any) -> str:
     """开标时间+项目名称+平台作为匹配键。"""
     return (
@@ -440,6 +461,113 @@ def restore_latest_bid_project_backup(user_id: Optional[int]) -> dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def list_project_bidders() -> list[str]:
+    """投标员下拉选项（去重排序）。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT TRIM(bidder) AS bidder
+            FROM bid_projects
+            WHERE TRIM(COALESCE(bidder, '')) != ''
+            ORDER BY bidder COLLATE NOCASE
+            """
+        ).fetchall()
+        return [str(r["bidder"]) for r in rows if r["bidder"]]
+    finally:
+        conn.close()
+
+
+def bid_project_calendar(year: int, month: int, bidder: str = "") -> dict[str, Any]:
+    """按月汇总开标排班：开标时间 + 投标员。
+
+    无开标时间的不进日历格子，单独返回 unscheduled_count。
+    """
+    if month < 1 or month > 12:
+        raise ValueError("month 必须是 1-12")
+    if year < 2000 or year > 2100:
+        raise ValueError("year 超出合理范围")
+
+    prefix = f"{year:04d}-{month:02d}-"
+    bidder_q = (bidder or "").strip()
+
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM bid_projects ORDER BY id ASC").fetchall()
+        by_date: dict[str, list[dict[str, Any]]] = {}
+        unscheduled = 0
+        month_total = 0
+
+        for row in rows:
+            item = _row_to_dict(row)
+            name = str(item.get("bidder") or "").strip()
+            if bidder_q and name != bidder_q:
+                continue
+            ot = _open_date_for_calendar(str(item.get("open_time") or ""))
+            if not ot:
+                unscheduled += 1
+                continue
+            if not ot.startswith(prefix):
+                continue
+
+            slim = {
+                "id": item["id"],
+                "open_time": ot,
+                "open_time_raw": str(item.get("open_time") or ""),
+                "bidder": name or "未填写",
+                "project_name": item.get("project_name") or "",
+                "platform": item.get("platform") or "",
+                "is_won": item.get("is_won") or "",
+                "is_void": item.get("is_void") or "",
+                "remark": item.get("remark") or "",
+            }
+            by_date.setdefault(ot, []).append(slim)
+            month_total += 1
+
+        for _day, items in by_date.items():
+            items.sort(key=lambda x: (x.get("bidder") or "", x.get("project_name") or "", int(x["id"])))
+
+        days = [
+            {
+                "date": d,
+                "count": len(items),
+                "bidders": sorted({x["bidder"] for x in items}),
+            }
+            for d, items in sorted(by_date.items())
+        ]
+
+        return {
+            "year": year,
+            "month": month,
+            "bidder": bidder_q,
+            "month_total": month_total,
+            "unscheduled_count": unscheduled,
+            "bidders": list_project_bidders(),
+            "days": days,
+            "by_date": by_date,
+            "suggest": _latest_open_month(conn),
+        }
+    finally:
+        conn.close()
+
+
+def _latest_open_month(conn: Any) -> Optional[dict[str, int]]:
+    """找最近一条能解析的开标日期所在年月，供空月提示跳转。"""
+    rows = conn.execute(
+        "SELECT open_time FROM bid_projects WHERE TRIM(COALESCE(open_time,'')) != '' ORDER BY id DESC LIMIT 500"
+    ).fetchall()
+    best: Optional[str] = None
+    for r in rows:
+        d = _open_date_for_calendar(str(r["open_time"] or ""))
+        if not d:
+            continue
+        if best is None or d > best:
+            best = d
+    if not best:
+        return None
+    return {"year": int(best[0:4]), "month": int(best[5:7])}
 
 
 # ---------------------------------------------------------------------------

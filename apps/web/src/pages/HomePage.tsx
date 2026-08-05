@@ -81,6 +81,14 @@ export function HomePage() {
                 投标项目
               </Link>
             ) : null}
+            {can(user?.permissions, "project.view") ? (
+              <Link
+                to="/calendar"
+                className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
+              >
+                开标日历
+              </Link>
+            ) : null}
             {can(user?.permissions, "deposit.view") ? (
               <Link
                 to="/deposits"
