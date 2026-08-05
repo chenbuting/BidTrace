@@ -50,6 +50,7 @@ from permissions import (  # noqa: E402
     resolve_permissions,
 )
 from stats_routes import mount_stats_routes  # noqa: E402
+from weekly_routes import mount_weekly_routes  # noqa: E402
 
 WEB_DIST = API_ROOT.parent / "web" / "dist"
 
@@ -133,8 +134,16 @@ def require_any_perm(*codes: str):
     return _dep
 
 
-# 挂载投标项目 / 投标保证金路由
+# 挂载投标项目 / 投标保证金 / 周报路由
 mount_stats_routes(app, {"require_login": require_login, "require_perm": require_perm})
+mount_weekly_routes(
+    app,
+    {
+        "require_login": require_login,
+        "require_perm": require_perm,
+        "require_any_perm": require_any_perm,
+    },
+)
 
 
 def mask_platform(row: dict[str, Any], perms: set[str]) -> dict[str, Any]:

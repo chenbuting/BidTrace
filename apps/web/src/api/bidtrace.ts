@@ -751,3 +751,97 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export type WeeklyItem = { title: string; body: string };
+
+export type WeeklyReport = {
+  id: number;
+  user_id: number;
+  username: string;
+  display_name: string;
+  week_start: string;
+  week_end: string;
+  week_label: string;
+  done_items: WeeklyItem[];
+  problems: string;
+  solutions: string;
+  plan_items: WeeklyItem[];
+  status: "draft" | "submitted" | string;
+  submitted_at?: string | null;
+  updated_at?: string;
+};
+
+export type WeeklyMeta = {
+  week_start: string;
+  week_end: string;
+  week_label: string;
+  options: { week_start: string; week_end: string; week_label: string }[];
+};
+
+export type WeeklyStatRow = {
+  user_id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  status: "submitted" | "draft" | "missing" | string;
+  report_id: number | null;
+  submitted_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type WeeklyStats = {
+  week_start: string;
+  week_end: string;
+  week_label: string;
+  totals: { users: number; submitted: number; draft: number; missing: number };
+  items: WeeklyStatRow[];
+};
+
+export async function fetchWeeklyMeta(week_start = "") {
+  const qs = week_start ? `?week_start=${encodeURIComponent(week_start)}` : "";
+  return api<WeeklyMeta>(`/api/weekly/meta${qs}`);
+}
+
+export async function fetchMyWeekly(week_start = "") {
+  const qs = week_start ? `?week_start=${encodeURIComponent(week_start)}` : "";
+  return api<{ item: WeeklyReport }>(`/api/weekly/mine${qs}`);
+}
+
+export async function fetchWeeklyStats(week_start = "") {
+  const qs = week_start ? `?week_start=${encodeURIComponent(week_start)}` : "";
+  return api<WeeklyStats>(`/api/weekly/stats${qs}`);
+}
+
+export async function fetchWeeklyReport(id: number) {
+  return api<{ item: WeeklyReport }>(`/api/weekly/reports/${id}`);
+}
+
+export async function saveWeeklyReport(
+  id: number,
+  body: {
+    display_name?: string;
+    done_items: WeeklyItem[];
+    problems: string;
+    solutions: string;
+    plan_items: WeeklyItem[];
+  },
+) {
+  return api<{ item: WeeklyReport }>(`/api/weekly/reports/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function submitWeeklyReport(id: number) {
+  return api<{ item: WeeklyReport }>(`/api/weekly/reports/${id}/submit`, { method: "POST" });
+}
+
+export async function reopenWeeklyReport(id: number) {
+  return api<{ item: WeeklyReport }>(`/api/weekly/reports/${id}/reopen`, { method: "POST" });
+}
+
+export async function exportWeeklyReport(id: number) {
+  const res = await fetch(`/api/weekly/reports/${id}/export`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("导出失败");
+  return res.blob();
+}

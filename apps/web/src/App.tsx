@@ -12,6 +12,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 import { PlatformsPage } from "@/pages/PlatformsPage";
 import { UsersPage } from "@/pages/UsersPage";
+import { WeeklyPage } from "@/pages/WeeklyPage";
 
 /** 路由根 */
 export function App() {
@@ -26,6 +27,7 @@ export function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="deposits" element={<DepositsPage />} />
         <Route path="inquiries" element={<InquiriesPage />} />
+        <Route path="weekly" element={<WeeklyPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />

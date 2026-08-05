@@ -331,3 +331,95 @@ def export_deposits_xlsx(rows: list[dict[str, Any]]) -> bytes:
 def empty_deposits_template_xlsx() -> bytes:
     """投标保证金空模板（仅表头）。"""
     return export_deposits_xlsx([])
+
+
+def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
+    """按「工作报表」模板导出单份周报。"""
+    from openpyxl.styles import Alignment, Border, Font, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    thin = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="top", wrap_text=True)
+
+    def merge_row(r: int, value: str, *, header: bool = False, height: float = 22) -> None:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+        cell = ws.cell(r, 1, value)
+        cell.alignment = center if header else left
+        cell.font = Font(bold=True, size=14) if header else Font(size=11)
+        for c in range(1, 8):
+            ws.cell(r, c).border = thin
+        ws.row_dimensions[r].height = height
+
+    display = str(report.get("display_name") or report.get("username") or "")
+    week_label = str(report.get("week_label") or "")
+    done_items = report.get("done_items") or []
+    plan_items = report.get("plan_items") or []
+    problems = str(report.get("problems") or "").strip()
+    solutions = str(report.get("solutions") or "").strip()
+
+    # 列宽
+    for c in range(1, 8):
+        ws.column_dimensions[chr(64 + c)].width = 12
+
+    merge_row(1, "工 作 报 表", header=True, height=28)
+    ws.merge_cells("A2:E2")
+    ws.merge_cells("F2:G2")
+    ws.cell(2, 1, f"制表人：{display}")
+    ws.cell(2, 6, f"时间：{week_label}")
+    for c in range(1, 8):
+        ws.cell(2, c).border = thin
+        ws.cell(2, c).alignment = Alignment(vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 22
+
+    row = 3
+    merge_row(row, "所做事项", header=True)
+    row += 1
+    if not done_items:
+        merge_row(row, "", height=36)
+        row += 1
+    else:
+        for i, it in enumerate(done_items, start=1):
+            title = str(it.get("title") or "").strip()
+            body = str(it.get("body") or "").strip()
+            text = f"{i}.{title}" if title else f"{i}."
+            if body:
+                text = f"{text}\n\n{body}" if title else f"{i}.{body}"
+            merge_row(row, text, height=max(36, 18 + 14 * (1 + text.count("\n"))))
+            row += 1
+
+    # 空行分隔
+    merge_row(row, "", height=10)
+    row += 1
+    merge_row(row, "所遇问题", header=True)
+    row += 1
+    merge_row(row, problems, height=max(36, 18 + 14 * max(1, problems.count("\n"))))
+    row += 1
+    merge_row(row, "解决意见", header=True)
+    row += 1
+    merge_row(row, solutions, height=max(36, 18 + 14 * max(1, solutions.count("\n"))))
+    row += 1
+    merge_row(row, "预期工作", header=True)
+    row += 1
+    if not plan_items:
+        merge_row(row, "", height=36)
+    else:
+        for i, it in enumerate(plan_items, start=1):
+            title = str(it.get("title") or "").strip()
+            body = str(it.get("body") or "").strip()
+            text = f"{i}.{title}" if title else f"{i}."
+            if body:
+                text = f"{text}\n{body}" if title else f"{i}.{body}"
+            merge_row(row, text, height=max(36, 18 + 14 * (1 + text.count("\n"))))
+            row += 1
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

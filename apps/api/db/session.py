@@ -180,6 +180,27 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             );
 
+            CREATE TABLE IF NOT EXISTS weekly_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                display_name TEXT NOT NULL DEFAULT '',
+                week_start TEXT NOT NULL,
+                week_end TEXT NOT NULL,
+                done_items TEXT NOT NULL DEFAULT '[]',
+                problems TEXT NOT NULL DEFAULT '',
+                solutions TEXT NOT NULL DEFAULT '',
+                plan_items TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'draft',
+                submitted_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                UNIQUE(user_id, week_start)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_weekly_week ON weekly_reports(week_start);
+            CREATE INDEX IF NOT EXISTS idx_weekly_user ON weekly_reports(user_id);
+
             -- 可配置角色：权限包存在 role_permissions，用户挂 roles.code
             CREATE TABLE IF NOT EXISTS roles (
                 code TEXT PRIMARY KEY,
