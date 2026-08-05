@@ -60,7 +60,7 @@ export function NotificationsPage() {
   const [sendMsg, setSendMsg] = useState("");
 
   const loadInbox = async (p = page, size = pageSize, onlyUnread = unreadOnly) => {
-    if (!canView) return;
+    if (!canView) return [] as NotifyItem[];
     setLoading(true);
     setError("");
     try {
