@@ -105,7 +105,9 @@ export function HomePage() {
                 询标报名
               </Link>
             ) : null}
-            {can(user?.permissions, "system.users") ? (
+            {can(user?.permissions, "system.users.view") ||
+            can(user?.permissions, "system.roles") ||
+            can(user?.permissions, "system.permissions") ? (
               <Link
                 to="/users"
                 className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"

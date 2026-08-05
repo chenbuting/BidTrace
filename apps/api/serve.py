@@ -43,7 +43,7 @@ from excel_io import (  # noqa: E402
 )
 from permissions import (  # noqa: E402
     ALL_PERMISSIONS,
-    ROLE_LABELS,
+    get_role_label,
     has_perm,
     permission_catalog,
     public_user_payload,
@@ -121,6 +121,18 @@ def require_perm(code: str):
     return _dep
 
 
+def require_any_perm(*codes: str):
+    """依赖工厂：拥有任一权限即可。"""
+
+    def _dep(user: dict[str, Any] = Depends(require_login)) -> dict[str, Any]:
+        if not any(has_perm(user["_perms"], c) for c in codes):
+            labels = " / ".join(ALL_PERMISSIONS.get(c, c) for c in codes)
+            raise HTTPException(status_code=403, detail=f"无权限：{labels}")
+        return user
+
+    return _dep
+
+
 # 挂载投标项目 / 投标保证金路由
 mount_stats_routes(app, {"require_login": require_login, "require_perm": require_perm})
 
@@ -153,14 +165,28 @@ class UserCreateBody(BaseModel):
 
 
 class UserUpdateBody(BaseModel):
+    username: Optional[str] = None
     display_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    # 改角色时是否清空个人权限覆盖；默认 True（改角色后用新角色默认包）
+    clear_overrides: Optional[bool] = None
 
 
 class PermsBody(BaseModel):
     overrides: dict[str, bool] = Field(default_factory=dict)
+
+
+class RoleCreateBody(BaseModel):
+    code: str
+    label: str
+    permissions: list[str] = Field(default_factory=list)
+
+
+class RoleUpdateBody(BaseModel):
+    label: Optional[str] = None
+    permissions: Optional[list[str]] = None
 
 
 class PlatformBody(BaseModel):
@@ -198,6 +224,7 @@ class InquiryBody(BaseModel):
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    q.ensure_seed_roles()
     q.ensure_seed_users()
 
 
@@ -239,14 +266,111 @@ def api_me(user: dict[str, Any] = Depends(require_login)) -> dict[str, Any]:
 
 @app.get("/api/meta/permissions")
 def api_permission_catalog(user: dict[str, Any] = Depends(require_login)) -> dict[str, Any]:
+    roles = [{"code": r["code"], "label": r["label"], "is_system": r["is_system"]} for r in q.list_roles()]
     return {
         "permissions": permission_catalog(),
-        "roles": [{"code": k, "label": v} for k, v in ROLE_LABELS.items()],
+        "roles": roles,
     }
 
 
+@app.get("/api/roles")
+def api_list_roles(
+    user: dict[str, Any] = Depends(
+        require_any_perm(
+            "system.users.view",
+            "system.users.create",
+            "system.users.edit",
+            "system.roles",
+        )
+    ),
+) -> dict[str, Any]:
+    items = []
+    for r in q.list_roles():
+        perms = q.get_role_permission_codes(str(r["code"]))
+        items.append({**r, "permissions": perms})
+    return {"items": items}
+
+
+@app.post("/api/roles")
+def api_create_role(
+    body: RoleCreateBody,
+    user: dict[str, Any] = Depends(require_perm("system.roles")),
+) -> dict[str, Any]:
+    import re
+
+    code = body.code.strip().lower()
+    label = body.label.strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", code):
+        raise HTTPException(status_code=400, detail="角色代码需为小写字母开头，仅含字母数字下划线，2-32 位")
+    if not label:
+        raise HTTPException(status_code=400, detail="请填写角色名称")
+    if q.role_exists(code):
+        raise HTTPException(status_code=400, detail="角色代码已存在")
+    created = q.create_role(code, label, is_system=False)
+    q.set_role_permissions(code, body.permissions)
+    q.add_audit(int(user["id"]), user["username"], "role.create", f"role:{code}", label)
+    return {
+        "item": {
+            **created,
+            "permissions": q.get_role_permission_codes(code),
+            "perm_count": len(q.get_role_permission_codes(code)),
+            "user_count": 0,
+        }
+    }
+
+
+@app.patch("/api/roles/{code}")
+def api_update_role(
+    code: str,
+    body: RoleUpdateBody,
+    user: dict[str, Any] = Depends(require_perm("system.roles")),
+) -> dict[str, Any]:
+    role = q.get_role(code)
+    if not role:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    if body.label is not None:
+        label = body.label.strip()
+        if not label:
+            raise HTTPException(status_code=400, detail="角色名称不能为空")
+        # admin 显示名可改，其它系统角色也可改名
+        q.update_role_label(code, label)
+    if body.permissions is not None:
+        if code == "admin":
+            # 仍写入全量，忽略传入（防误操作）
+            q.set_role_permissions(code, list(ALL_PERMISSIONS.keys()))
+        else:
+            q.set_role_permissions(code, body.permissions)
+    updated = q.get_role(code)
+    assert updated
+    perms = q.get_role_permission_codes(code)
+    q.add_audit(
+        int(user["id"]),
+        user["username"],
+        "role.update",
+        f"role:{code}",
+        f"perms={len(perms)}",
+    )
+    # 附带列表字段
+    for r in q.list_roles():
+        if r["code"] == code:
+            return {"item": {**r, "permissions": perms}}
+    return {"item": {**updated, "permissions": perms}}
+
+
+@app.delete("/api/roles/{code}")
+def api_delete_role(
+    code: str,
+    user: dict[str, Any] = Depends(require_perm("system.roles")),
+) -> dict[str, Any]:
+    result = q.delete_role(code)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "删除失败")
+    q.add_audit(int(user["id"]), user["username"], "role.delete", f"role:{code}", "")
+    return result
+
+
 @app.get("/api/users")
-def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users"))) -> dict[str, Any]:
+def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users.view"))) -> dict[str, Any]:
     items = []
     for u in q.list_users():
         overrides = q.get_permission_overrides(int(u["id"]))
@@ -254,7 +378,7 @@ def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users")))
         items.append(
             {
                 **{k: u[k] for k in ("id", "username", "display_name", "role", "is_active", "created_at")},
-                "role_label": ROLE_LABELS.get(str(u["role"]), u["role"]),
+                "role_label": get_role_label(str(u["role"])),
                 "overrides": overrides,
                 "permissions": sorted(perms),
             }
@@ -265,9 +389,9 @@ def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users")))
 @app.post("/api/users")
 def api_create_user(
     body: UserCreateBody,
-    user: dict[str, Any] = Depends(require_perm("system.users")),
+    user: dict[str, Any] = Depends(require_perm("system.users.create")),
 ) -> dict[str, Any]:
-    if body.role not in ROLE_LABELS:
+    if not q.role_exists(body.role):
         raise HTTPException(status_code=400, detail="无效角色")
     if q.get_user_by_username(body.username.strip()):
         raise HTTPException(status_code=400, detail="用户名已存在")
@@ -280,21 +404,97 @@ def api_create_user(
 def api_update_user(
     user_id: int,
     body: UserUpdateBody,
-    user: dict[str, Any] = Depends(require_perm("system.users")),
-) -> dict[str, Any]:
-    if body.role is not None and body.role not in ROLE_LABELS:
+    user: dict[str, Any] = Depends(require_perm("system.users.edit")),
+) -> JSONResponse:
+    target = q.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if body.role is not None and not q.role_exists(body.role):
         raise HTTPException(status_code=400, detail="无效角色")
+    # 内置 admin 账号不允许改角色，避免锁死系统
+    if body.role is not None and str(target.get("username")) == "admin":
+        raise HTTPException(status_code=400, detail="内置管理员账号不能改角色")
+    # 不能停用自己
+    if body.is_active is False and int(target["id"]) == int(user["id"]):
+        raise HTTPException(status_code=400, detail="不能停用当前登录账号")
+
+    new_username: Optional[str] = None
+    if body.username is not None:
+        new_username = body.username.strip()
+        if not new_username:
+            raise HTTPException(status_code=400, detail="登录用户名不能为空")
+        if str(target.get("username")) == "admin" and new_username != "admin":
+            raise HTTPException(status_code=400, detail="内置管理员登录名不能修改")
+        if new_username != str(target.get("username")):
+            exists = q.get_user_by_username(new_username)
+            if exists and int(exists["id"]) != int(user_id):
+                raise HTTPException(status_code=400, detail="登录用户名已存在")
+
+    old_role = str(target.get("role") or "")
+    pwd = (body.password or "").strip() or None
     updated = q.update_user(
         user_id,
+        username=new_username,
         display_name=body.display_name,
         role=body.role,
         is_active=body.is_active,
-        password=body.password,
+        password=pwd,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="用户不存在")
-    q.add_audit(int(user["id"]), user["username"], "user.update", f"user:{user_id}", "")
-    return {"item": {k: updated[k] for k in ("id", "username", "display_name", "role", "is_active")}}
+
+    cleared = False
+    if body.role is not None and body.role != old_role:
+        do_clear = True if body.clear_overrides is None else bool(body.clear_overrides)
+        if do_clear:
+            q.set_permission_overrides(user_id, {})
+            cleared = True
+
+    parts: list[str] = []
+    if new_username is not None and new_username != str(target.get("username") or ""):
+        parts.append(f"username {target.get('username')}->{new_username}")
+    if body.display_name is not None and body.display_name != (target.get("display_name") or ""):
+        parts.append("display_name")
+    if pwd:
+        parts.append("password")
+    if body.is_active is not None:
+        parts.append("active" if body.is_active else "inactive")
+    if body.role is not None and body.role != old_role:
+        detail_role = f"role {old_role}->{body.role}"
+        if cleared:
+            detail_role += "; clear overrides"
+        elif body.clear_overrides is False:
+            detail_role += "; keep overrides"
+        parts.append(detail_role)
+    detail = "; ".join(parts)
+    q.add_audit(int(user["id"]), user["username"], "user.update", f"user:{user_id}", detail)
+
+    payload = {"item": {k: updated[k] for k in ("id", "username", "display_name", "role", "is_active")}}
+    resp = JSONResponse(payload)
+    # 若改的是当前登录用户自己的用户名，刷新会话 cookie，避免立刻掉线
+    if new_username and int(user_id) == int(user["id"]) and new_username != str(user.get("username") or ""):
+        _set_session(resp, new_username)
+    return resp
+
+
+@app.delete("/api/users/{user_id}")
+def api_delete_user(
+    user_id: int,
+    user: dict[str, Any] = Depends(require_perm("system.users.delete")),
+) -> dict[str, Any]:
+    if int(user_id) == int(user["id"]):
+        raise HTTPException(status_code=400, detail="不能删除当前登录账号")
+    result = q.delete_user(user_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "删除失败")
+    q.add_audit(
+        int(user["id"]),
+        user["username"],
+        "user.delete",
+        f"user:{user_id}",
+        str(result.get("username") or ""),
+    )
+    return result
 
 
 @app.put("/api/users/{user_id}/permissions")

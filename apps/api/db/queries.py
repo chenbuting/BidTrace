@@ -109,6 +109,7 @@ def create_user(
 def update_user(
     user_id: int,
     *,
+    username: Optional[str] = None,
     display_name: Optional[str] = None,
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
@@ -116,6 +117,9 @@ def update_user(
 ) -> Optional[dict[str, Any]]:
     fields: list[str] = []
     values: list[Any] = []
+    if username is not None:
+        fields.append("username = ?")
+        values.append(username)
     if display_name is not None:
         fields.append("display_name = ?")
         values.append(display_name)
@@ -139,6 +143,23 @@ def update_user(
     finally:
         conn.close()
     return get_user_by_id(user_id)
+
+
+def delete_user(user_id: int) -> dict[str, Any]:
+    """删除用户及其权限覆盖。"""
+    target = get_user_by_id(user_id)
+    if not target:
+        return {"ok": False, "message": "用户不存在"}
+    if str(target.get("username")) == "admin":
+        return {"ok": False, "message": "内置管理员账号不能删除"}
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM user_permission_overrides WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        return {"ok": True, "message": "已删除", "username": target.get("username")}
+    finally:
+        conn.close()
 
 
 def get_permission_overrides(user_id: int) -> dict[str, bool]:
@@ -179,6 +200,280 @@ def ensure_seed_users() -> None:
     create_user("leader", "change-me", "投标组长", "leader")
     create_user("xunbiao", "change-me", "询标员", "inquiry")
     create_user("member", "change-me", "专员", "member")
+
+
+# ---------------------------------------------------------------------------
+# 可配置角色
+# ---------------------------------------------------------------------------
+
+def ensure_seed_roles() -> None:
+    """写入内置角色及默认权限包；已存在的角色不覆盖其权限配置。"""
+    from permissions import ALL_PERMISSIONS, ROLE_DEFAULTS, ROLE_LABELS
+
+    conn = get_conn()
+    try:
+        for code, label in ROLE_LABELS.items():
+            row = conn.execute("SELECT code FROM roles WHERE code = ?", (code,)).fetchone()
+            if not row:
+                conn.execute(
+                    """
+                    INSERT INTO roles (code, label, is_system)
+                    VALUES (?, ?, 1)
+                    """,
+                    (code, label),
+                )
+                for perm in sorted(ROLE_DEFAULTS.get(code) or set()):
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                        VALUES (?, ?)
+                        """,
+                        (code, perm),
+                    )
+            else:
+                cnt = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM role_permissions WHERE role_code = ?",
+                        (code,),
+                    ).fetchone()[0]
+                )
+                if cnt == 0 and code != "admin":
+                    for perm in sorted(ROLE_DEFAULTS.get(code) or set()):
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                            VALUES (?, ?)
+                            """,
+                            (code, perm),
+                        )
+                if code == "admin":
+                    for perm in ALL_PERMISSIONS:
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                            VALUES (?, ?)
+                            """,
+                            (code, perm),
+                        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    migrate_system_permission_codes()
+
+
+def migrate_system_permission_codes() -> None:
+    """迁移旧 system.users → 细项；并补全 admin 的 system.roles。
+
+    注意：不会把旧 system.permissions 自动扩成 system.roles，
+    避免「分配权限」再次连带角色管理；admin 角色单独保证全开。
+    """
+    from permissions import ALL_PERMISSIONS, _LEGACY_PERM_EXPAND
+
+    conn = get_conn()
+    try:
+        # 角色权限包：展开 system.users
+        for legacy, modern in _LEGACY_PERM_EXPAND.items():
+            rows = conn.execute(
+                "SELECT role_code FROM role_permissions WHERE permission_code = ?",
+                (legacy,),
+            ).fetchall()
+            for r in rows:
+                role_code = str(r["role_code"])
+                conn.execute(
+                    "DELETE FROM role_permissions WHERE role_code = ? AND permission_code = ?",
+                    (role_code, legacy),
+                )
+                for code in modern:
+                    if code in ALL_PERMISSIONS:
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                            VALUES (?, ?)
+                            """,
+                            (role_code, code),
+                        )
+
+        # 单人覆盖表同样展开
+        for legacy, modern in _LEGACY_PERM_EXPAND.items():
+            rows = conn.execute(
+                "SELECT user_id, granted FROM user_permission_overrides WHERE permission_code = ?",
+                (legacy,),
+            ).fetchall()
+            for r in rows:
+                uid = int(r["user_id"])
+                granted = int(r["granted"])
+                conn.execute(
+                    "DELETE FROM user_permission_overrides WHERE user_id = ? AND permission_code = ?",
+                    (uid, legacy),
+                )
+                for code in modern:
+                    if code in ALL_PERMISSIONS:
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO user_permission_overrides
+                              (user_id, permission_code, granted)
+                            VALUES (?, ?, ?)
+                            """,
+                            (uid, code, granted),
+                        )
+
+        # admin 角色补全新权限码（含 system.roles）
+        for perm in ALL_PERMISSIONS:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                VALUES ('admin', ?)
+                """,
+                (perm,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_roles() -> list[dict[str, Any]]:
+    """角色列表（含权限数、用户数）。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+              r.code,
+              r.label,
+              r.is_system,
+              r.created_at,
+              r.updated_at,
+              (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_code = r.code) AS perm_count,
+              (SELECT COUNT(*) FROM users u WHERE u.role = r.code) AS user_count
+            FROM roles r
+            ORDER BY r.is_system DESC, r.code ASC
+            """
+        ).fetchall()
+        out = []
+        for r in rows:
+            item = _row_to_dict(r)
+            item["is_system"] = bool(item.get("is_system"))
+            out.append(item)
+        return out
+    finally:
+        conn.close()
+
+
+def get_role(code: str) -> Optional[dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM roles WHERE code = ?", (code,)).fetchone()
+        if not row:
+            return None
+        item = _row_to_dict(row)
+        item["is_system"] = bool(item.get("is_system"))
+        return item
+    finally:
+        conn.close()
+
+
+def get_role_permission_codes(role_code: str) -> list[str]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT permission_code FROM role_permissions
+            WHERE role_code = ?
+            ORDER BY permission_code
+            """,
+            (role_code,),
+        ).fetchall()
+        return [str(r["permission_code"]) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_role(code: str, label: str, *, is_system: bool = False) -> dict[str, Any]:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO roles (code, label, is_system)
+            VALUES (?, ?, ?)
+            """,
+            (code, label, 1 if is_system else 0),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    role = get_role(code)
+    assert role
+    return role
+
+
+def update_role_label(code: str, label: str) -> Optional[dict[str, Any]]:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            UPDATE roles
+            SET label = ?, updated_at = datetime('now','localtime')
+            WHERE code = ?
+            """,
+            (label, code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_role(code)
+
+
+def set_role_permissions(role_code: str, permission_codes: list[str]) -> None:
+    """整表替换角色权限包。"""
+    from permissions import ALL_PERMISSIONS
+
+    clean = [c for c in permission_codes if c in ALL_PERMISSIONS]
+    # admin 强制保留全量
+    if role_code == "admin":
+        clean = list(ALL_PERMISSIONS.keys())
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM role_permissions WHERE role_code = ?", (role_code,))
+        for code in clean:
+            conn.execute(
+                """
+                INSERT INTO role_permissions (role_code, permission_code)
+                VALUES (?, ?)
+                """,
+                (role_code, code),
+            )
+        conn.execute(
+            "UPDATE roles SET updated_at = datetime('now','localtime') WHERE code = ?",
+            (role_code,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_role(code: str) -> dict[str, Any]:
+    """删除非系统角色；有用户占用则失败。"""
+    role = get_role(code)
+    if not role:
+        return {"ok": False, "message": "角色不存在"}
+    if role.get("is_system"):
+        return {"ok": False, "message": "系统内置角色不能删除"}
+    conn = get_conn()
+    try:
+        n = int(conn.execute("SELECT COUNT(*) FROM users WHERE role = ?", (code,)).fetchone()[0])
+        if n > 0:
+            return {"ok": False, "message": f"仍有 {n} 个用户使用该角色，请先改用户角色"}
+        conn.execute("DELETE FROM role_permissions WHERE role_code = ?", (code,))
+        conn.execute("DELETE FROM roles WHERE code = ?", (code,))
+        conn.commit()
+        return {"ok": True, "message": "已删除"}
+    finally:
+        conn.close()
+
+
+def role_exists(code: str) -> bool:
+    return get_role(code) is not None
 
 
 # ---------------------------------------------------------------------------

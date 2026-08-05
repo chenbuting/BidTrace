@@ -170,8 +170,29 @@ def init_db() -> None:
                 created_by INTEGER,
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             );
+
+            -- 可配置角色：权限包存在 role_permissions，用户挂 roles.code
+            CREATE TABLE IF NOT EXISTS roles (
+                code TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                is_system INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                role_code TEXT NOT NULL,
+                permission_code TEXT NOT NULL,
+                PRIMARY KEY (role_code, permission_code),
+                FOREIGN KEY(role_code) REFERENCES roles(code) ON DELETE CASCADE
+            );
             """
         )
         conn.commit()
     finally:
         conn.close()
+
+    # 种子角色（仅首次写入，不覆盖已配置权限）
+    from . import queries as _q
+
+    _q.ensure_seed_roles()

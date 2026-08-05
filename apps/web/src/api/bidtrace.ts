@@ -60,6 +60,17 @@ export type AppUser = {
   permissions: string[];
 };
 
+export type AppRole = {
+  code: string;
+  label: string;
+  is_system: boolean;
+  perm_count?: number;
+  user_count?: number;
+  permissions?: string[];
+  created_at?: string;
+  updated_at?: string;
+};
+
 export async function login(username: string, password: string) {
   return api<{ ok: boolean; user: UserInfo }>("/api/auth/login", {
     method: "POST",
@@ -314,9 +325,20 @@ export async function createUser(body: {
 
 export async function updateUser(
   id: number,
-  body: { display_name?: string; role?: string; is_active?: boolean; password?: string },
+  body: {
+    username?: string;
+    display_name?: string;
+    role?: string;
+    is_active?: boolean;
+    password?: string;
+    clear_overrides?: boolean;
+  },
 ) {
   return api<{ item: AppUser }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteUser(id: number) {
+  return api<{ ok: boolean; message?: string }>(`/api/users/${id}`, { method: "DELETE" });
 }
 
 export async function setUserPerms(id: number, overrides: Record<string, boolean>) {
@@ -329,8 +351,32 @@ export async function setUserPerms(id: number, overrides: Record<string, boolean
 export async function fetchMeta() {
   return api<{
     permissions: { code: string; label: string }[];
-    roles: { code: string; label: string }[];
+    roles: { code: string; label: string; is_system?: boolean }[];
   }>("/api/meta/permissions");
+}
+
+export async function fetchRoles() {
+  return api<{ items: AppRole[] }>("/api/roles");
+}
+
+export async function createRole(body: { code: string; label: string; permissions: string[] }) {
+  return api<{ item: AppRole }>("/api/roles", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateRole(
+  code: string,
+  body: { label?: string; permissions?: string[] },
+) {
+  return api<{ item: AppRole }>(`/api/roles/${encodeURIComponent(code)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteRole(code: string) {
+  return api<{ ok: boolean; message?: string }>(`/api/roles/${encodeURIComponent(code)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function fetchAudit(limit = 100) {
