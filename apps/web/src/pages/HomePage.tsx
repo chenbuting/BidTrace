@@ -67,6 +67,12 @@ export function HomePage() {
                 平台账号
               </Link>
             ) : null}
+            <Link
+              to="/charts"
+              className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
+            >
+              数据看板
+            </Link>
             {can(user?.permissions, "project.view") ? (
               <Link
                 to="/projects"

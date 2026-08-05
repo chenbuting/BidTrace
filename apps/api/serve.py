@@ -332,6 +332,15 @@ def api_dashboard(user: dict[str, Any] = Depends(require_login)) -> dict[str, An
     return q.dashboard_stats()
 
 
+@app.get("/api/dashboard/charts")
+def api_dashboard_charts(
+    days: int = Query(14, ge=0, le=3650, description="趋势天数；0=全部历史"),
+    user: dict[str, Any] = Depends(require_login),
+) -> dict[str, Any]:
+    """数据看板图表汇总。"""
+    return q.dashboard_charts(days=days)
+
+
 # ---------------------------------------------------------------------------
 # 平台账号
 # ---------------------------------------------------------------------------

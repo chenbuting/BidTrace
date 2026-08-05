@@ -79,6 +79,36 @@ export async function fetchDashboard() {
   return api<Dashboard>("/api/dashboard");
 }
 
+export type ChartNamedValue = { name: string; count: number };
+
+export type DashboardCharts = {
+  days: number;
+  totals: {
+    inquiry_total: number;
+    inquiry_bid_yes: number;
+    project_total: number;
+    project_won: number;
+    deposit_total: number;
+    deposit_pending: number;
+    platform_total: number;
+  };
+  inquiry_trend: { date: string; total: number; bid_yes: number; bid_no: number }[];
+  inquiry_bid: ChartNamedValue[];
+  project_result: ChartNamedValue[];
+  deposit_return: ChartNamedValue[];
+  platform_status: ChartNamedValue[];
+  by_inquiry_platform: ChartNamedValue[];
+  by_skip_reason: ChartNamedValue[];
+  by_project_bidder: ChartNamedValue[];
+  by_project_platform: ChartNamedValue[];
+  by_deposit_payee: ChartNamedValue[];
+};
+
+/** 数据看板图表数据 */
+export async function fetchDashboardCharts(days = 14) {
+  return api<DashboardCharts>(`/api/dashboard/charts?days=${days}`);
+}
+
 export async function fetchPlatforms(params: Record<string, string | number>) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {

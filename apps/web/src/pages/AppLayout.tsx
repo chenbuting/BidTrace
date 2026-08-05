@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
+  BarChart3,
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
@@ -17,6 +18,7 @@ import { can, cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "总览", icon: LayoutDashboard, end: true, perm: null as string | null },
+  { to: "/charts", label: "数据看板", icon: BarChart3, perm: null as string | null },
   { to: "/platforms", label: "平台账号", icon: Waypoints, perm: "platform.view" },
   { to: "/projects", label: "投标项目", icon: FolderKanban, perm: "project.view" },
   { to: "/deposits", label: "投标保证金", icon: Wallet, perm: "deposit.view" },

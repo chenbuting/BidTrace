@@ -802,3 +802,281 @@ def dashboard_stats() -> dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def _label_count_rows(rows: list[Any], empty_label: str = "未标注") -> list[dict[str, Any]]:
+    """把 GROUP BY 结果转成 {name,count}，空标签统一成未标注。"""
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        name = str(r["label"] or "").strip() or empty_label
+        out.append({"name": name, "count": int(r["cnt"])})
+    return out
+
+
+def _norm_chart_date(raw: Any) -> str:
+    """图表日期统一成 YYYY-MM-DD，兼容 YYYYMMDD。"""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    if len(s) == 8 and s.isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return s
+
+
+def _merge_trend_rows(rows: list[Any]) -> list[dict[str, Any]]:
+    """按归一化日期合并趋势点，并按日期排序。"""
+    merged: dict[str, dict[str, int]] = {}
+    for r in rows:
+        key = _norm_chart_date(r["d"])
+        if not key:
+            continue
+        cell = merged.setdefault(key, {"total": 0, "bid_yes": 0, "bid_no": 0})
+        cell["total"] += int(r["total"] or 0)
+        cell["bid_yes"] += int(r["bid_yes"] or 0)
+        cell["bid_no"] += int(r["bid_no"] or 0)
+    return [{"date": k, **merged[k]} for k in sorted(merged.keys())]
+
+
+def _top_name_counts(
+    conn: Any,
+    sql: str,
+    params: tuple[Any, ...] = (),
+    empty_label: str = "未填写",
+) -> list[dict[str, Any]]:
+    """执行 Top N 查询，返回 {name,count}。"""
+    rows = conn.execute(sql, params).fetchall()
+    return _label_count_rows(rows, empty_label=empty_label)
+
+
+def dashboard_charts(days: int = 14) -> dict[str, Any]:
+    """数据看板（对齐采集中心风格）：趋势 + 占比 + Top 排行。
+
+    days=0 表示询标趋势统计全部历史日期（只返回有数据的天，避免空白日爆炸）。
+    """
+    from datetime import date, timedelta
+
+    raw_days = int(days) if days is not None else 14
+    all_time = raw_days == 0
+    span = 0 if all_time else max(1, min(raw_days, 3650))
+    conn = get_conn()
+    try:
+        today = date.today()
+        end_s = today.isoformat()
+
+        if all_time:
+            raw_trend = conn.execute(
+                """
+                SELECT
+                  register_date AS d,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '是' THEN 1 ELSE 0 END) AS bid_yes,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no
+                FROM inquiries
+                WHERE register_date != ''
+                GROUP BY register_date
+                ORDER BY register_date ASC
+                """
+            ).fetchall()
+            inquiry_trend = _merge_trend_rows(raw_trend)
+        else:
+            start = today - timedelta(days=span - 1)
+            start_s = start.isoformat()
+            # 同时兼容库里 YYYY-MM-DD 与 YYYYMMDD
+            start_compact = start.strftime("%Y%m%d")
+            end_compact = today.strftime("%Y%m%d")
+            raw_trend = conn.execute(
+                """
+                SELECT
+                  register_date AS d,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '是' THEN 1 ELSE 0 END) AS bid_yes,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no
+                FROM inquiries
+                WHERE (
+                  (register_date >= ? AND register_date <= ?)
+                  OR (register_date >= ? AND register_date <= ?)
+                )
+                GROUP BY register_date
+                """,
+                (start_s, end_s, start_compact, end_compact),
+            ).fetchall()
+            by_day = {
+                item["date"]: {
+                    "total": item["total"],
+                    "bid_yes": item["bid_yes"],
+                    "bid_no": item["bid_no"],
+                }
+                for item in _merge_trend_rows(raw_trend)
+            }
+            inquiry_trend = []
+            cur = start
+            while cur <= today:
+                key = cur.isoformat()
+                cell = by_day.get(key, {"total": 0, "bid_yes": 0, "bid_no": 0})
+                inquiry_trend.append({"date": key, **cell})
+                cur += timedelta(days=1)
+
+        inquiry_bid = _label_count_rows(
+            conn.execute(
+                """
+                SELECT TRIM(COALESCE(is_bid, '')) AS label, COUNT(*) AS cnt
+                FROM inquiries
+                GROUP BY TRIM(COALESCE(is_bid, ''))
+                ORDER BY cnt DESC
+                """
+            ).fetchall()
+        )
+
+        project_result = _label_count_rows(
+            conn.execute(
+                """
+                SELECT
+                  CASE
+                    WHEN TRIM(COALESCE(is_void, '')) = '是' THEN '废标'
+                    WHEN TRIM(COALESCE(is_won, '')) = '是' THEN '中标'
+                    WHEN TRIM(COALESCE(is_won, '')) = '否' THEN '未中标'
+                    ELSE '未标注'
+                  END AS label,
+                  COUNT(*) AS cnt
+                FROM bid_projects
+                GROUP BY label
+                ORDER BY cnt DESC
+                """
+            ).fetchall()
+        )
+
+        deposit_return = _label_count_rows(
+            conn.execute(
+                """
+                SELECT TRIM(COALESCE(is_returned, '')) AS label, COUNT(*) AS cnt
+                FROM bid_deposits
+                GROUP BY TRIM(COALESCE(is_returned, ''))
+                ORDER BY cnt DESC
+                """
+            ).fetchall()
+        )
+
+        platform_status = _label_count_rows(
+            conn.execute(
+                """
+                SELECT TRIM(COALESCE(status, '')) AS label, COUNT(*) AS cnt
+                FROM platforms
+                GROUP BY TRIM(COALESCE(status, ''))
+                ORDER BY cnt DESC
+                """
+            ).fetchall(),
+            empty_label="未设置",
+        )
+
+        by_inquiry_platform = _top_name_counts(
+            conn,
+            """
+            SELECT TRIM(COALESCE(platform_name, '')) AS label, COUNT(*) AS cnt
+            FROM inquiries
+            GROUP BY TRIM(COALESCE(platform_name, ''))
+            ORDER BY cnt DESC
+            LIMIT 12
+            """,
+            empty_label="未知平台",
+        )
+
+        by_skip_reason = _top_name_counts(
+            conn,
+            """
+            SELECT TRIM(COALESCE(skip_reason_category, '')) AS label, COUNT(*) AS cnt
+            FROM inquiries
+            WHERE TRIM(COALESCE(skip_reason_category, '')) != ''
+            GROUP BY TRIM(COALESCE(skip_reason_category, ''))
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
+            empty_label="未分类",
+        )
+
+        by_project_bidder = _top_name_counts(
+            conn,
+            """
+            SELECT TRIM(COALESCE(bidder, '')) AS label, COUNT(*) AS cnt
+            FROM bid_projects
+            GROUP BY TRIM(COALESCE(bidder, ''))
+            ORDER BY cnt DESC
+            LIMIT 12
+            """,
+            empty_label="未填写",
+        )
+
+        by_project_platform = _top_name_counts(
+            conn,
+            """
+            SELECT TRIM(COALESCE(platform, '')) AS label, COUNT(*) AS cnt
+            FROM bid_projects
+            GROUP BY TRIM(COALESCE(platform, ''))
+            ORDER BY cnt DESC
+            LIMIT 12
+            """,
+            empty_label="未知平台",
+        )
+
+        by_deposit_payee = _top_name_counts(
+            conn,
+            """
+            SELECT TRIM(COALESCE(payee, '')) AS label, COUNT(*) AS cnt
+            FROM bid_deposits
+            GROUP BY TRIM(COALESCE(payee, ''))
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
+            empty_label="未填写",
+        )
+
+        inquiry_total = int(conn.execute("SELECT COUNT(*) FROM inquiries").fetchone()[0])
+        inquiry_bid_yes = int(
+            conn.execute("SELECT COUNT(*) FROM inquiries WHERE TRIM(COALESCE(is_bid,'')) = '是'").fetchone()[0]
+        )
+        project_total = int(conn.execute("SELECT COUNT(*) FROM bid_projects").fetchone()[0])
+        project_won = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM bid_projects
+                WHERE TRIM(COALESCE(is_won,'')) = '是'
+                  AND TRIM(COALESCE(is_void,'')) != '是'
+                """
+            ).fetchone()[0]
+        )
+        deposit_total = int(conn.execute("SELECT COUNT(*) FROM bid_deposits").fetchone()[0])
+        deposit_pending = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM bid_deposits
+                WHERE TRIM(COALESCE(is_returned,'')) != '是'
+                """
+            ).fetchone()[0]
+        )
+        platform_total = int(conn.execute("SELECT COUNT(*) FROM platforms").fetchone()[0])
+
+        return {
+            "days": span,
+            "totals": {
+                "inquiry_total": inquiry_total,
+                "inquiry_bid_yes": inquiry_bid_yes,
+                "project_total": project_total,
+                "project_won": project_won,
+                "deposit_total": deposit_total,
+                "deposit_pending": deposit_pending,
+                "platform_total": platform_total,
+            },
+            "inquiry_trend": inquiry_trend,
+            "inquiry_bid": inquiry_bid,
+            "project_result": project_result,
+            "deposit_return": deposit_return,
+            "platform_status": platform_status,
+            "by_inquiry_platform": by_inquiry_platform,
+            "by_skip_reason": by_skip_reason,
+            "by_project_bidder": by_project_bidder,
+            "by_project_platform": by_project_platform,
+            "by_deposit_payee": by_deposit_payee,
+        }
+    finally:
+        conn.close()
