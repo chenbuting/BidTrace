@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import {
@@ -7,7 +7,6 @@ import {
   createUser,
   deleteRole,
   deleteUser,
-  fetchAudit,
   fetchMeta,
   fetchRoles,
   fetchUsers,
@@ -33,6 +32,7 @@ const PERM_GROUPS: { title: string; hint: string; prefix: string }[] = [
   { title: "平台账号", hint: "", prefix: "platform." },
   { title: "询标报名", hint: "", prefix: "inquiry." },
   { title: "投标项目", hint: "", prefix: "project." },
+  { title: "开标日历", hint: "与投标项目台账分开勾选", prefix: "calendar." },
   { title: "投标保证金", hint: "", prefix: "deposit." },
   { title: "周报", hint: "", prefix: "weekly." },
 ];
@@ -103,9 +103,6 @@ export function UsersPage() {
   const [items, setItems] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [permCatalog, setPermCatalog] = useState<{ code: string; label: string }[]>([]);
-  const [audit, setAudit] = useState<
-    { id: number; username: string; action: string; target: string; detail: string; created_at: string }[]
-  >([]);
   const [error, setError] = useState("");
 
   const [editingPerms, setEditingPerms] = useState<AppUser | null>(null);
@@ -156,10 +153,6 @@ export function UsersPage() {
       setItems(u.items);
       setRoles(roleList.items.length ? roleList.items : meta.roles.map((r) => ({ ...r, is_system: !!r.is_system })));
       setPermCatalog(meta.permissions);
-      if (can(perms, "system.audit")) {
-        const a = await fetchAudit(50);
-        setAudit(a.items);
-      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "加载失败");
     }
@@ -479,24 +472,13 @@ export function UsersPage() {
       )}
 
       {can(perms, "system.audit") ? (
-        <div className="glass-card mt-6 p-4">
-          <h2 className="text-[14px] font-semibold text-[#26251e]">最近操作日志</h2>
-          <ul className="mt-3 max-h-64 space-y-2 overflow-auto text-[12px]">
-            {audit.length === 0 ? (
-              <li className="text-[#6b6b6b]">暂无</li>
-            ) : (
-              audit.map((a) => (
-                <li key={a.id} className="flex flex-wrap gap-x-3 text-[#4a4a4a]">
-                  <span className="text-[#a3a3a3]">{a.created_at}</span>
-                  <span className="font-medium text-[#26251e]">{a.username}</span>
-                  <span>{a.action}</span>
-                  <span className="text-[#6b6b6b]">{a.target}</span>
-                  <span className="text-[#6b6b6b]">{a.detail}</span>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
+        <p className="mt-4 text-[12px] text-[#6b6b6b]">
+          操作记录已独立成模块，请到{" "}
+          <Link to="/audit" className="font-medium text-[#26251e] underline underline-offset-2">
+            操作日志
+          </Link>{" "}
+          查看。
+        </p>
       ) : null}
 
       {creating ? (

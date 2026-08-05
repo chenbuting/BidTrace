@@ -379,10 +379,23 @@ export async function deleteRole(code: string) {
   });
 }
 
-export async function fetchAudit(limit = 100) {
-  return api<{ items: { id: number; username: string; action: string; target: string; detail: string; created_at: string }[] }>(
-    `/api/audit?limit=${limit}`,
-  );
+export type AuditLog = {
+  id: number;
+  user_id?: number | null;
+  username: string;
+  action: string;
+  target: string;
+  detail: string;
+  created_at: string;
+};
+
+export async function fetchAudit(params: Record<string, string | number> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return api<{ total: number; items: AuditLog[]; actions: string[] }>(`/api/audit${suffix}`);
 }
 
 export type BidProject = {

@@ -318,7 +318,21 @@ def migrate_system_permission_codes() -> None:
                             (uid, code, granted),
                         )
 
-        # admin 角色补全新权限码（含 system.roles）
+        # 已有「查看投标项目」的角色，默认补开标日历查看权（仅补缺，不强制）
+        if "calendar.view" in ALL_PERMISSIONS:
+            rows = conn.execute(
+                "SELECT DISTINCT role_code FROM role_permissions WHERE permission_code = 'project.view'"
+            ).fetchall()
+            for r in rows:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                    VALUES (?, 'calendar.view')
+                    """,
+                    (str(r["role_code"]),),
+                )
+
+        # admin 角色补全新权限码（含 system.roles / calendar.view）
         for perm in ALL_PERMISSIONS:
             conn.execute(
                 """
@@ -501,14 +515,65 @@ def add_audit(
         conn.close()
 
 
-def list_audit(limit: int = 100) -> list[dict[str, Any]]:
+def list_audit(
+    *,
+    username: str = "",
+    action: str = "",
+    target: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """分页查询操作日志。"""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if username:
+        clauses.append("username LIKE ?")
+        params.append(f"%{username.strip()}%")
+    if action:
+        clauses.append("action LIKE ?")
+        params.append(f"%{action.strip()}%")
+    if target:
+        clauses.append("target LIKE ?")
+        params.append(f"%{target.strip()}%")
+    if date_from:
+        clauses.append("created_at >= ?")
+        params.append(date_from.strip())
+    if date_to:
+        # 含当天：若只给日期则扩到当天结束
+        end = date_to.strip()
+        if len(end) == 10:
+            end = end + " 23:59:59"
+        clauses.append("created_at <= ?")
+        params.append(end)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    conn = get_conn()
+    try:
+        total = int(conn.execute(f"SELECT COUNT(*) FROM audit_logs{where}", params).fetchone()[0])
+        rows = conn.execute(
+            f"SELECT * FROM audit_logs{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows], total
+    finally:
+        conn.close()
+
+
+def list_audit_actions(limit: int = 80) -> list[str]:
+    """日志里出现过的 action，供筛选下拉。"""
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM audit_logs ORDER BY id DESC LIMIT ?",
+            """
+            SELECT DISTINCT action FROM audit_logs
+            WHERE TRIM(COALESCE(action,'')) != ''
+            ORDER BY action ASC
+            LIMIT ?
+            """,
             (limit,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [str(r["action"]) for r in rows]
     finally:
         conn.close()
 

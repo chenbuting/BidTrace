@@ -72,7 +72,7 @@ export function CalendarPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const canView = can(user?.permissions, "project.view");
+  const canView = can(user?.permissions, "calendar.view");
 
   const load = (y = year, m = month, b = bidder) => {
     if (!canView) {
@@ -136,7 +136,7 @@ export function CalendarPage() {
   if (!canView) {
     return (
       <div className="p-6 md:p-8">
-        <p className="text-[13px] text-[#6b6b6b]">没有查看投标项目的权限，无法打开开标日历。</p>
+        <p className="text-[13px] text-[#6b6b6b]">没有查看开标日历的权限。</p>
       </div>
     );
   }

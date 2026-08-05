@@ -517,10 +517,29 @@ def api_set_user_perms(
 
 @app.get("/api/audit")
 def api_audit(
-    limit: int = Query(100, ge=1, le=500),
+    username: str = "",
+    action: str = "",
+    target: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     user: dict[str, Any] = Depends(require_perm("system.audit")),
 ) -> dict[str, Any]:
-    return {"items": q.list_audit(limit)}
+    items, total = q.list_audit(
+        username=username,
+        action=action,
+        target=target,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "total": total,
+        "items": items,
+        "actions": q.list_audit_actions(),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     "project.delete": "删除投标项目",
     "project.import": "导入投标项目",
     "project.export": "导出投标项目",
+    # 开标日历（与投标项目台账分开勾选）
+    "calendar.view": "查看开标日历",
     # 投标保证金
     "deposit.view": "查看投标保证金",
     "deposit.create": "新增投标保证金",
@@ -92,6 +94,7 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "project.delete",
         "project.import",
         "project.export",
+        "calendar.view",
         "deposit.view",
         "deposit.create",
         "deposit.edit",
@@ -113,6 +116,7 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "inquiry.delete",
         "inquiry.export",
         "project.view",
+        "calendar.view",
         "deposit.view",
         "weekly.view_own",
         "weekly.edit_own",
@@ -126,6 +130,7 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "project.view",
         "project.create",
         "project.edit",
+        "calendar.view",
         "deposit.view",
         "deposit.create",
         "deposit.edit",

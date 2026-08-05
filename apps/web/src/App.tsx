@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "@/pages/AppLayout";
+import { AuditPage } from "@/pages/AuditPage";
 import { BidProjectsPage } from "@/pages/BidProjectsPage";
 import { CalendarPage } from "@/pages/CalendarPage";
 import { ChartsPage } from "@/pages/ChartsPage";
@@ -25,6 +26,7 @@ export function App() {
         <Route path="deposits" element={<DepositsPage />} />
         <Route path="inquiries" element={<InquiriesPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="audit" element={<AuditPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -81,7 +81,7 @@ export function HomePage() {
                 投标项目
               </Link>
             ) : null}
-            {can(user?.permissions, "project.view") ? (
+            {can(user?.permissions, "calendar.view") ? (
               <Link
                 to="/calendar"
                 className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
@@ -113,6 +113,14 @@ export function HomePage() {
                 className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
               >
                 用户权限
+              </Link>
+            ) : null}
+            {can(user?.permissions, "system.audit") ? (
+              <Link
+                to="/audit"
+                className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
+              >
+                操作日志
               </Link>
             ) : null}
           </div>

@@ -105,7 +105,7 @@ def create_stats_router(
         year: int = Query(..., ge=2000, le=2100),
         month: int = Query(..., ge=1, le=12),
         bidder: str = "",
-        user: dict[str, Any] = Depends(require_perm("project.view")),
+        user: dict[str, Any] = Depends(require_perm("calendar.view")),
     ) -> dict[str, Any]:
         """开标日历 / 投标员排班。"""
         try:
