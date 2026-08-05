@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { can, cn } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 50;
 
 /** 常见操作中文名（未知则显示原 action） */
 const ACTION_LABELS: Record<string, string> = {
@@ -23,6 +24,7 @@ const ACTION_LABELS: Record<string, string> = {
   "role.create": "新建角色",
   "role.update": "更新角色",
   "role.delete": "删除角色",
+  "notify.send": "发送通知",
   "platform.create": "新建平台",
   "platform.update": "更新平台",
   "platform.delete": "删除平台",
@@ -76,15 +78,14 @@ export function AuditPage() {
   const [draft, setDraft] = useState<Filters>({ ...EMPTY });
   const [filters, setFilters] = useState<Filters>({ ...EMPTY });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [items, setItems] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [actions, setActions] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const load = async (f = filters, p = page) => {
+  const load = async (f = filters, p = page, size = pageSize) => {
     if (!allowed) return;
     setLoading(true);
     setError("");
@@ -95,8 +96,8 @@ export function AuditPage() {
         target: f.target,
         date_from: f.date_from,
         date_to: f.date_to,
-        limit: PAGE_SIZE,
-        offset: (p - 1) * PAGE_SIZE,
+        limit: size,
+        offset: (p - 1) * size,
       });
       setItems(data.items || []);
       setTotal(data.total || 0);
@@ -246,37 +247,17 @@ export function AuditPage() {
         </table>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#6b6b6b]">
-        <span>
-          共 {total} 条 · 第 {page}/{pageCount} 页
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1 || loading}
-            onClick={() => {
-              const p = page - 1;
-              setPage(p);
-              void load(filters, p);
-            }}
-          >
-            上一页
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= pageCount || loading}
-            onClick={() => {
-              const p = page + 1;
-              setPage(p);
-              void load(filters, p);
-            }}
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        disabled={loading}
+        onChange={(p, size) => {
+          setPage(p);
+          setPageSize(size);
+          void load(filters, p, size);
+        }}
+      />
     </div>
   );
 }

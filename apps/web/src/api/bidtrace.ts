@@ -398,6 +398,57 @@ export async function fetchAudit(params: Record<string, string | number> = {}) {
   return api<{ total: number; items: AuditLog[]; actions: string[] }>(`/api/audit${suffix}`);
 }
 
+export type NotifyItem = {
+  id: number;
+  sender_id?: number | null;
+  sender_username: string;
+  title: string;
+  content: string;
+  created_at: string;
+  read_at?: string | null;
+  is_unread?: number | boolean;
+};
+
+export type NotifyPickerUser = {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  role_label: string;
+};
+
+export async function fetchNotifications(params: Record<string, string | number | boolean> = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v != null) qs.set(k, String(v));
+  });
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return api<{ total: number; items: NotifyItem[] }>(`/api/notifications${suffix}`);
+}
+
+export async function fetchNotifyUnreadCount() {
+  return api<{ count: number }>("/api/notifications/unread-count");
+}
+
+export async function fetchNotifyUsers() {
+  return api<{ items: NotifyPickerUser[] }>("/api/notifications/users");
+}
+
+export async function sendNotification(body: { title: string; content: string; user_ids: number[] }) {
+  return api<{ item: { id: number; title: string; recipient_count: number } }>("/api/notifications", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function markNotificationRead(id: number) {
+  return api<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: "POST" });
+}
+
+export async function markAllNotificationsRead() {
+  return api<{ ok: boolean; updated: number }>("/api/notifications/read-all", { method: "POST" });
+}
+
 export type BidProject = {
   id: number;
   serial_no: string;

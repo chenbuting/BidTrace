@@ -186,6 +186,27 @@ def init_db() -> None:
                 PRIMARY KEY (role_code, permission_code),
                 FOREIGN KEY(role_code) REFERENCES roles(code) ON DELETE CASCADE
             );
+
+            -- 站内通知：一条通知 + 多接收人
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER,
+                sender_username TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS notification_recipients (
+                notification_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                read_at TEXT,
+                PRIMARY KEY (notification_id, user_id),
+                FOREIGN KEY(notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notify_recipients_user
+              ON notification_recipients(user_id, read_at);
             """
         )
         conn.commit()

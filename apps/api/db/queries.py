@@ -332,7 +332,25 @@ def migrate_system_permission_codes() -> None:
                     (str(r["role_code"]),),
                 )
 
-        # admin 角色补全新权限码（含 system.roles / calendar.view）
+        # 站内通知：所有角色默认可收；leader 默认可发（仅补缺）
+        if "notify.view" in ALL_PERMISSIONS:
+            for r in conn.execute("SELECT code FROM roles").fetchall():
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                    VALUES (?, 'notify.view')
+                    """,
+                    (str(r["code"]),),
+                )
+        if "notify.send" in ALL_PERMISSIONS:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+                VALUES ('leader', 'notify.send')
+                """
+            )
+
+        # admin 角色补全新权限码（含 system.roles / calendar.view / notify.*）
         for perm in ALL_PERMISSIONS:
             conn.execute(
                 """
@@ -574,6 +592,195 @@ def list_audit_actions(limit: int = 80) -> list[str]:
             (limit,),
         ).fetchall()
         return [str(r["action"]) for r in rows]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 站内通知
+# ---------------------------------------------------------------------------
+
+def list_notify_picker_users() -> list[dict[str, Any]]:
+    """发通知时可选的启用用户（精简字段）。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, username, display_name, role
+            FROM users
+            WHERE COALESCE(is_active, 1) = 1
+            ORDER BY id ASC
+            """
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_notification(
+    *,
+    sender_id: int,
+    sender_username: str,
+    title: str,
+    content: str,
+    recipient_ids: list[int],
+) -> dict[str, Any]:
+    """创建通知并写入接收人。"""
+    title = (title or "").strip()
+    content = (content or "").strip()
+    ids = sorted({int(x) for x in recipient_ids if int(x) > 0})
+    if not title:
+        return {"ok": False, "message": "标题不能为空"}
+    if not ids:
+        return {"ok": False, "message": "请至少选择一名接收人"}
+
+    conn = get_conn()
+    try:
+        # 只发给仍启用的用户
+        placeholders = ",".join("?" for _ in ids)
+        valid_rows = conn.execute(
+            f"""
+            SELECT id FROM users
+            WHERE id IN ({placeholders}) AND COALESCE(is_active, 1) = 1
+            """,
+            ids,
+        ).fetchall()
+        valid_ids = [int(r["id"]) for r in valid_rows]
+        if not valid_ids:
+            return {"ok": False, "message": "没有有效的接收人"}
+
+        cur = conn.execute(
+            """
+            INSERT INTO notifications (sender_id, sender_username, title, content)
+            VALUES (?, ?, ?, ?)
+            """,
+            (sender_id, sender_username, title, content),
+        )
+        nid = int(cur.lastrowid)
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO notification_recipients (notification_id, user_id, read_at)
+            VALUES (?, ?, NULL)
+            """,
+            [(nid, uid) for uid in valid_ids],
+        )
+        conn.commit()
+        return {
+            "ok": True,
+            "item": {
+                "id": nid,
+                "sender_id": sender_id,
+                "sender_username": sender_username,
+                "title": title,
+                "content": content,
+                "recipient_count": len(valid_ids),
+            },
+        }
+    finally:
+        conn.close()
+
+
+def list_inbox(
+    user_id: int,
+    *,
+    unread_only: bool = False,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """当前用户收件箱。"""
+    clauses = ["r.user_id = ?"]
+    params: list[Any] = [user_id]
+    if unread_only:
+        clauses.append("r.read_at IS NULL")
+    where = " AND ".join(clauses)
+    conn = get_conn()
+    try:
+        total = int(
+            conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM notification_recipients r
+                WHERE {where}
+                """,
+                params,
+            ).fetchone()[0]
+        )
+        rows = conn.execute(
+            f"""
+            SELECT
+              n.id,
+              n.sender_id,
+              n.sender_username,
+              n.title,
+              n.content,
+              n.created_at,
+              r.read_at,
+              CASE WHEN r.read_at IS NULL THEN 1 ELSE 0 END AS is_unread
+            FROM notification_recipients r
+            JOIN notifications n ON n.id = r.notification_id
+            WHERE {where}
+            ORDER BY n.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, limit, offset],
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows], total
+    finally:
+        conn.close()
+
+
+def count_unread_notifications(user_id: int) -> int:
+    conn = get_conn()
+    try:
+        return int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM notification_recipients
+                WHERE user_id = ? AND read_at IS NULL
+                """,
+                (user_id,),
+            ).fetchone()[0]
+        )
+    finally:
+        conn.close()
+
+
+def mark_notification_read(user_id: int, notification_id: int) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE notification_recipients
+            SET read_at = datetime('now','localtime')
+            WHERE user_id = ? AND notification_id = ? AND read_at IS NULL
+            """,
+            (user_id, notification_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0 or conn.execute(
+            """
+            SELECT 1 FROM notification_recipients
+            WHERE user_id = ? AND notification_id = ?
+            """,
+            (user_id, notification_id),
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def mark_all_notifications_read(user_id: int) -> int:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE notification_recipients
+            SET read_at = datetime('now','localtime')
+            WHERE user_id = ? AND read_at IS NULL
+            """,
+            (user_id,),
+        )
+        conn.commit()
+        return int(cur.rowcount or 0)
     finally:
         conn.close()
 

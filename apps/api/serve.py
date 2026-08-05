@@ -178,6 +178,12 @@ class PermsBody(BaseModel):
     overrides: dict[str, bool] = Field(default_factory=dict)
 
 
+class NotifyCreateBody(BaseModel):
+    title: str
+    content: str = ""
+    user_ids: list[int] = Field(default_factory=list)
+
+
 class RoleCreateBody(BaseModel):
     code: str
     label: str
@@ -540,6 +546,96 @@ def api_audit(
         "items": items,
         "actions": q.list_audit_actions(),
     }
+
+
+# ---------------------------------------------------------------------------
+# 站内通知
+# ---------------------------------------------------------------------------
+
+@app.get("/api/notifications/unread-count")
+def api_notify_unread_count(
+    user: dict[str, Any] = Depends(require_perm("notify.view")),
+) -> dict[str, Any]:
+    return {"count": q.count_unread_notifications(int(user["id"]))}
+
+
+@app.get("/api/notifications/users")
+def api_notify_users(
+    user: dict[str, Any] = Depends(require_perm("notify.send")),
+) -> dict[str, Any]:
+    """发通知时的接收人列表。"""
+    items = []
+    for u in q.list_notify_picker_users():
+        items.append(
+            {
+                "id": u["id"],
+                "username": u["username"],
+                "display_name": u.get("display_name") or u["username"],
+                "role": u.get("role") or "member",
+                "role_label": get_role_label(str(u.get("role") or "member")),
+            }
+        )
+    return {"items": items}
+
+
+@app.get("/api/notifications")
+def api_list_notifications(
+    unread_only: bool = False,
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict[str, Any] = Depends(require_perm("notify.view")),
+) -> dict[str, Any]:
+    items, total = q.list_inbox(
+        int(user["id"]),
+        unread_only=unread_only,
+        limit=limit,
+        offset=offset,
+    )
+    return {"total": total, "items": items}
+
+
+@app.post("/api/notifications/read-all")
+def api_notify_read_all(
+    user: dict[str, Any] = Depends(require_perm("notify.view")),
+) -> dict[str, Any]:
+    n = q.mark_all_notifications_read(int(user["id"]))
+    return {"ok": True, "updated": n}
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def api_notify_read_one(
+    notification_id: int,
+    user: dict[str, Any] = Depends(require_perm("notify.view")),
+) -> dict[str, Any]:
+    ok = q.mark_notification_read(int(user["id"]), notification_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="通知不存在")
+    return {"ok": True}
+
+
+@app.post("/api/notifications")
+def api_create_notification(
+    body: NotifyCreateBody,
+    user: dict[str, Any] = Depends(require_perm("notify.send")),
+) -> dict[str, Any]:
+    result = q.create_notification(
+        sender_id=int(user["id"]),
+        sender_username=str(user.get("username") or ""),
+        title=body.title,
+        content=body.content,
+        recipient_ids=body.user_ids,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "发送失败")
+    item = result["item"]
+    q.add_audit(
+        int(user["id"]),
+        user["username"],
+        "notify.send",
+        f"notify:{item['id']}",
+        f"{item['title']} → {item['recipient_count']}人",
+    )
+    return {"item": item}
 
 
 # ---------------------------------------------------------------------------

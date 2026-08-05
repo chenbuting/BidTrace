@@ -9,6 +9,7 @@ import { DepositsPage } from "@/pages/DepositsPage";
 import { HomePage } from "@/pages/HomePage";
 import { InquiriesPage } from "@/pages/InquiriesPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { NotificationsPage } from "@/pages/NotificationsPage";
 import { PlatformsPage } from "@/pages/PlatformsPage";
 import { UsersPage } from "@/pages/UsersPage";
 
@@ -25,6 +26,7 @@ export function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="deposits" element={<DepositsPage />} />
         <Route path="inquiries" element={<InquiriesPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>

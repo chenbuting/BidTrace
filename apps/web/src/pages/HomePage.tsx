@@ -123,6 +123,14 @@ export function HomePage() {
                 操作日志
               </Link>
             ) : null}
+            {can(user?.permissions, "notify.view") ? (
+              <Link
+                to="/notifications"
+                className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-[13px] font-medium text-[#26251e] hover:border-black/[0.16]"
+              >
+                站内通知
+              </Link>
+            ) : null}
           </div>
           <p className="mt-4 text-[12px] leading-relaxed text-[#6b6b6b]">
             平台账号、投标项目、投标保证金、询标报名与权限管理。

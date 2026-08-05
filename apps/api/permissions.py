@@ -53,6 +53,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     "system.roles": "角色管理（新建/配置权限包/删除角色）",
     "system.permissions": "单人权限微调（在角色之外加减权限）",
     "system.audit": "查看操作日志",
+    # 站内通知
+    "notify.view": "查看/接收站内通知",
+    "notify.send": "发送站内通知",
 }
 
 # 旧版权限码兼容：展开为新细项
@@ -106,6 +109,8 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "weekly.edit_own",
         "weekly.edit_others",
         "system.audit",
+        "notify.view",
+        "notify.send",
     },
     "inquiry": {
         "platform.view",
@@ -120,6 +125,7 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "deposit.view",
         "weekly.view_own",
         "weekly.edit_own",
+        "notify.view",
     },
     "member": {
         "platform.view",
@@ -136,6 +142,7 @@ ROLE_DEFAULTS: dict[str, set[str]] = {
         "deposit.edit",
         "weekly.view_own",
         "weekly.edit_own",
+        "notify.view",
     },
 }
 

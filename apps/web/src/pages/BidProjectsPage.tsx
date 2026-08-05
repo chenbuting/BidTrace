@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { toIsoDate } from "@/lib/dates";
 import { can, cn } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ const EMPTY: BidProject = {
   payment_method: "",
 };
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 type Filters = {
   project_name: string;
@@ -77,6 +78,7 @@ export function BidProjectsPage() {
   const [items, setItems] = useState<BidProject[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<BidProject | null>(null);
@@ -94,7 +96,7 @@ export function BidProjectsPage() {
     }
   };
 
-  const load = async (nextPage = page, nextFilters = filters) => {
+  const load = async (nextPage = page, nextFilters = filters, nextSize = pageSize) => {
     setLoading(true);
     setError("");
     try {
@@ -103,8 +105,8 @@ export function BidProjectsPage() {
         platform: nextFilters.platform,
         bidder: nextFilters.bidder,
         is_won: nextFilters.is_won,
-        limit: PAGE_SIZE,
-        offset: (nextPage - 1) * PAGE_SIZE,
+        limit: nextSize,
+        offset: (nextPage - 1) * nextSize,
       });
       setItems(data.items);
       setTotal(data.total);
@@ -122,7 +124,6 @@ export function BidProjectsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const allChecked = items.length > 0 && items.every((i) => selected.has(i.id));
 
   const selectedRows = useMemo(
@@ -252,10 +253,10 @@ export function BidProjectsPage() {
     }
   };
 
-  const gotoPage = (p: number) => {
-    const next = Math.min(pageCount, Math.max(1, p));
-    setPage(next);
-    void load(next, filters);
+  const onPageChange = (p: number, size: number) => {
+    setPage(p);
+    setPageSize(size);
+    void load(p, filters, size);
   };
 
   return (
@@ -468,19 +469,13 @@ export function BidProjectsPage() {
         </table>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#6b6b6b]">
-        <p>
-          第 {page}/{pageCount} 页 · 每页 {PAGE_SIZE} 条
-        </p>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => gotoPage(page - 1)}>
-            上一页
-          </Button>
-          <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => gotoPage(page + 1)}>
-            下一页
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        disabled={loading}
+        onChange={onPageChange}
+      />
 
       <p className="mt-4 text-center text-[11px] text-[#a3a3a3]">
         Copyright © 2025 BruceChen. All Rights Reserved.

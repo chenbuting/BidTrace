@@ -30,6 +30,7 @@ import { PlatformImportDialog } from "@/components/PlatformImportDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Pagination } from "@/components/ui/pagination";
 import { can, cn } from "@/lib/utils";
 
 const EMPTY: Platform = {
@@ -47,7 +48,7 @@ const EMPTY: Platform = {
   remark: "",
 };
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 type Filters = {
   name: string;
@@ -77,6 +78,7 @@ export function PlatformsPage() {
   const [items, setItems] = useState<Platform[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Platform | null>(null);
@@ -94,7 +96,7 @@ export function PlatformsPage() {
     }
   };
 
-  const load = async (nextPage = page, nextFilters = filters) => {
+  const load = async (nextPage = page, nextFilters = filters, nextSize = pageSize) => {
     setLoading(true);
     setError("");
     try {
@@ -105,8 +107,8 @@ export function PlatformsPage() {
         has_ca: nextFilters.has_ca,
         priority: nextFilters.priority,
         status: nextFilters.status,
-        limit: PAGE_SIZE,
-        offset: (nextPage - 1) * PAGE_SIZE,
+        limit: nextSize,
+        offset: (nextPage - 1) * nextSize,
       });
       setItems(data.items);
       setTotal(data.total);
@@ -124,7 +126,6 @@ export function PlatformsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const allChecked = items.length > 0 && items.every((i) => selected.has(i.id));
 
   const selectedRows = useMemo(
@@ -262,10 +263,10 @@ export function PlatformsPage() {
     }
   };
 
-  const gotoPage = (p: number) => {
-    const next = Math.min(pageCount, Math.max(1, p));
-    setPage(next);
-    void load(next, filters);
+  const onPageChange = (p: number, size: number) => {
+    setPage(p);
+    setPageSize(size);
+    void load(p, filters, size);
   };
 
   return (
@@ -520,24 +521,13 @@ export function PlatformsPage() {
       </div>
 
       {/* 分页 */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#6b6b6b]">
-        <p>
-          第 {page}/{pageCount} 页 · 每页 {PAGE_SIZE} 条
-        </p>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => gotoPage(page - 1)}>
-            上一页
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= pageCount}
-            onClick={() => gotoPage(page + 1)}
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        disabled={loading}
+        onChange={onPageChange}
+      />
 
       <p className="mt-4 text-center text-[11px] text-[#a3a3a3]">
         Copyright © 2025 BruceChen. All Rights Reserved.

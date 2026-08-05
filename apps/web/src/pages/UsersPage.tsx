@@ -29,6 +29,7 @@ const PERM_GROUPS: { title: string; hint: string; prefix: string }[] = [
   { title: "系统 · 角色管理", hint: "配置角色权限包；与用户账号权限分开", prefix: "system.roles" },
   { title: "系统 · 单人微调", hint: "在角色之外对单个用户加减权限", prefix: "system.permissions" },
   { title: "系统 · 审计", hint: "操作日志", prefix: "system.audit" },
+  { title: "站内通知", hint: "接收与发送分开授权", prefix: "notify." },
   { title: "平台账号", hint: "", prefix: "platform." },
   { title: "询标报名", hint: "", prefix: "inquiry." },
   { title: "投标项目", hint: "", prefix: "project." },
