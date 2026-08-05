@@ -97,13 +97,20 @@ export type DashboardCharts = {
   totals: {
     inquiry_total: number;
     inquiry_bid_yes: number;
+    inquiry_bid_pending: number;
     project_total: number;
     project_won: number;
     deposit_total: number;
     deposit_pending: number;
     platform_total: number;
   };
-  inquiry_trend: { date: string; total: number; bid_yes: number; bid_no: number }[];
+  inquiry_trend: {
+    date: string;
+    total: number;
+    bid_yes: number;
+    bid_no: number;
+    bid_pending: number;
+  }[];
   inquiry_bid: ChartNamedValue[];
   project_result: ChartNamedValue[];
   deposit_return: ChartNamedValue[];

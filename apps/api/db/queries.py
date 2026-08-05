@@ -1399,10 +1399,11 @@ def _merge_trend_rows(rows: list[Any]) -> list[dict[str, Any]]:
         key = _norm_chart_date(r["d"])
         if not key:
             continue
-        cell = merged.setdefault(key, {"total": 0, "bid_yes": 0, "bid_no": 0})
+        cell = merged.setdefault(key, {"total": 0, "bid_yes": 0, "bid_no": 0, "bid_pending": 0})
         cell["total"] += int(r["total"] or 0)
         cell["bid_yes"] += int(r["bid_yes"] or 0)
         cell["bid_no"] += int(r["bid_no"] or 0)
+        cell["bid_pending"] += int(r["bid_pending"] or 0)
     return [{"date": k, **merged[k]} for k in sorted(merged.keys())]
 
 
@@ -1439,7 +1440,8 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
                   register_date AS d,
                   COUNT(*) AS total,
                   SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '是' THEN 1 ELSE 0 END) AS bid_yes,
-                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '待确定' THEN 1 ELSE 0 END) AS bid_pending
                 FROM inquiries
                 WHERE register_date != ''
                 GROUP BY register_date
@@ -1459,7 +1461,8 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
                   register_date AS d,
                   COUNT(*) AS total,
                   SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '是' THEN 1 ELSE 0 END) AS bid_yes,
-                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '否' THEN 1 ELSE 0 END) AS bid_no,
+                  SUM(CASE WHEN TRIM(COALESCE(is_bid, '')) = '待确定' THEN 1 ELSE 0 END) AS bid_pending
                 FROM inquiries
                 WHERE (
                   (register_date >= ? AND register_date <= ?)
@@ -1474,6 +1477,7 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
                     "total": item["total"],
                     "bid_yes": item["bid_yes"],
                     "bid_no": item["bid_no"],
+                    "bid_pending": item["bid_pending"],
                 }
                 for item in _merge_trend_rows(raw_trend)
             }
@@ -1481,7 +1485,7 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
             cur = start
             while cur <= today:
                 key = cur.isoformat()
-                cell = by_day.get(key, {"total": 0, "bid_yes": 0, "bid_no": 0})
+                cell = by_day.get(key, {"total": 0, "bid_yes": 0, "bid_no": 0, "bid_pending": 0})
                 inquiry_trend.append({"date": key, **cell})
                 cur += timedelta(days=1)
 
@@ -1493,7 +1497,8 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
                 GROUP BY TRIM(COALESCE(is_bid, ''))
                 ORDER BY cnt DESC
                 """
-            ).fetchall()
+            ).fetchall(),
+            empty_label="未填写",
         )
 
         project_result = _label_count_rows(
@@ -1517,9 +1522,15 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
         deposit_return = _label_count_rows(
             conn.execute(
                 """
-                SELECT TRIM(COALESCE(is_returned, '')) AS label, COUNT(*) AS cnt
+                SELECT
+                  CASE
+                    WHEN TRIM(COALESCE(is_returned, '')) = '是' THEN '已退回'
+                    WHEN TRIM(COALESCE(is_returned, '')) = '否' THEN '未退回'
+                    ELSE '未填写'
+                  END AS label,
+                  COUNT(*) AS cnt
                 FROM bid_deposits
-                GROUP BY TRIM(COALESCE(is_returned, ''))
+                GROUP BY label
                 ORDER BY cnt DESC
                 """
             ).fetchall()
@@ -1602,6 +1613,11 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
         inquiry_bid_yes = int(
             conn.execute("SELECT COUNT(*) FROM inquiries WHERE TRIM(COALESCE(is_bid,'')) = '是'").fetchone()[0]
         )
+        inquiry_bid_pending = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM inquiries WHERE TRIM(COALESCE(is_bid,'')) = '待确定'"
+            ).fetchone()[0]
+        )
         project_total = int(conn.execute("SELECT COUNT(*) FROM bid_projects").fetchone()[0])
         project_won = int(
             conn.execute(
@@ -1628,6 +1644,7 @@ def dashboard_charts(days: int = 14) -> dict[str, Any]:
             "totals": {
                 "inquiry_total": inquiry_total,
                 "inquiry_bid_yes": inquiry_bid_yes,
+                "inquiry_bid_pending": inquiry_bid_pending,
                 "project_total": project_total,
                 "project_won": project_won,
                 "deposit_total": deposit_total,

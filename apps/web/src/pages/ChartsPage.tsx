@@ -119,6 +119,10 @@ function SoftTooltip({
 }
 
 function Donut({ data }: { data: ChartNamedValue[] }) {
+  const total = Math.max(
+    1,
+    data.reduce((s, x) => s + (Number(x.count) || 0), 0),
+  );
   return (
     <div className="h-[240px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -138,7 +142,15 @@ function Donut({ data }: { data: ChartNamedValue[] }) {
             ))}
           </Pie>
           <Tooltip content={<SoftTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend
+            wrapperStyle={{ fontSize: 12 }}
+            formatter={(value) => {
+              const item = data.find((d) => d.name === value);
+              const count = item?.count ?? 0;
+              const pct = Math.round((count / total) * 100);
+              return `${value} ${count}（${pct}%）`;
+            }}
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>
@@ -205,6 +217,12 @@ export function ChartsPage() {
   const cards = [
     { label: "询标记录", value: totals?.inquiry_total ?? "—", hint: "全部报名" },
     { label: "已投标", value: totals?.inquiry_bid_yes ?? "—", hint: "询标里选「是」", tone: "ok" as const },
+    {
+      label: "待确定",
+      value: totals?.inquiry_bid_pending ?? "—",
+      hint: "询标里选「待确定」",
+      tone: "warn" as const,
+    },
     { label: "中标项目", value: totals?.project_won ?? "—", hint: `项目共 ${totals?.project_total ?? 0}`, tone: "info" as const },
     {
       label: "保证金待退",
@@ -235,7 +253,11 @@ export function ChartsPage() {
           <select
             className="h-8 rounded-lg border border-black/[0.12] bg-white px-2 text-[13px] text-[#26251e]"
             value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setDays(next);
+              load(next);
+            }}
           >
             <option value={7}>近 7 天</option>
             <option value={14}>近 14 天</option>
@@ -251,7 +273,7 @@ export function ChartsPage() {
         {error ? <span className="text-[12px] text-red-600">{error}</span> : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {cards.map((c) => (
           <div key={c.label} className="rounded-xl border border-black/[0.08] bg-white px-4 py-3.5">
             <p className="text-[12px] text-[#6b6b6b]">{c.label}</p>
@@ -276,8 +298,8 @@ export function ChartsPage() {
           title="询标报名趋势"
           hint={
             (data?.days ?? days) === 0
-              ? "全部历史有数据的日期：全部 / 已投 / 未投"
-              : `近 ${data?.days ?? days} 天：全部 / 已投 / 未投`
+              ? "全部历史有数据的日期：全部 / 已投 / 未投 / 待确定"
+              : `近 ${data?.days ?? days} 天：全部 / 已投 / 未投 / 待确定`
           }
           empty={!hasTrend}
         >
@@ -292,12 +314,20 @@ export function ChartsPage() {
                 <Line type="monotone" dataKey="total" name="全部" stroke="#26251e" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="bid_yes" name="已投" stroke="#067647" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="bid_no" name="未投" stroke="#b42318" strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="bid_pending"
+                  name="待确定"
+                  stroke="#b54708"
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </ChartPanel>
 
-        <ChartPanel title="询标：是否投标" hint="全部询标记录占比" empty={inquiryBid.length === 0}>
+        <ChartPanel title="询标：是否投标" hint="全部询标记录占比（空值计为未填写）" empty={inquiryBid.length === 0}>
           <Donut data={inquiryBid} />
         </ChartPanel>
 
@@ -305,7 +335,7 @@ export function ChartsPage() {
           <Donut data={projectResult} />
         </ChartPanel>
 
-        <ChartPanel title="保证金退回情况" hint="是否已退回" empty={depositReturn.length === 0}>
+        <ChartPanel title="保证金退回情况" hint="已退回 / 未退回 / 未填写" empty={depositReturn.length === 0}>
           <Donut data={depositReturn} />
         </ChartPanel>
 

@@ -47,6 +47,8 @@ const SKIP_CATEGORIES = [
 ];
 
 const YES_NO = ["是", "否"];
+/** 是否投标：含待确定（历史数据中已有该取值） */
+const BID_OPTS = ["是", "否", "待确定"];
 const OVERVIEW_OPTS = ["是", "否", "等待结果通知"];
 
 const EMPTY: Inquiry = {
@@ -315,7 +317,7 @@ export function InquiriesPage() {
             <Select
               value={draft.is_bid}
               onChange={(v) => setDraft({ ...draft, is_bid: v })}
-              options={YES_NO}
+              options={BID_OPTS}
             />
           </FilterField>
           <FilterField label="是否报名">
@@ -606,7 +608,7 @@ export function InquiriesPage() {
               </Field>
               {(
                 [
-                  ["is_bid", "是否投标", YES_NO],
+                  ["is_bid", "是否投标", BID_OPTS],
                   ["is_registered", "是否报名", YES_NO],
                   ["file_received", "文件是否领取", YES_NO],
                   ["is_paid", "是否交费", YES_NO],
@@ -722,6 +724,7 @@ function Tag({ kind, children }: { kind: TagKind; children: ReactNode }) {
 
 function YesNoTag({ value }: { value: string }) {
   if (!value) return <span>—</span>;
+  if (value === "待确定") return <Tag kind="wait">{value}</Tag>;
   return <Tag kind={value === "是" ? "ok" : "no"}>{value}</Tag>;
 }
 
