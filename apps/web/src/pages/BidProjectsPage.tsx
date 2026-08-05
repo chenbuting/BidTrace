@@ -30,8 +30,10 @@ import {
 } from "@/api/bidtrace";
 import { StatsImportDialog } from "@/components/StatsImportDialog";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toIsoDate } from "@/lib/dates";
 import { can, cn } from "@/lib/utils";
 
 const EMPTY: BidProject = {
@@ -153,6 +155,10 @@ export function BidProjectsPage() {
     setSelected(next);
   };
 
+  const openEdit = (row: BidProject) => {
+    setEditing({ ...row, open_time: toIsoDate(row.open_time) });
+  };
+
   const onSave = async () => {
     if (!editing || !editing.project_name.trim()) {
       setError("项目名称必填");
@@ -160,7 +166,7 @@ export function BidProjectsPage() {
     }
     try {
       const { id, ...rest } = editing;
-      await saveBidProject(rest, id || undefined);
+      await saveBidProject({ ...rest, open_time: toIsoDate(rest.open_time) }, id || undefined);
       setEditing(null);
       await load(page, filters);
     } catch (e) {
@@ -183,7 +189,7 @@ export function BidProjectsPage() {
       alert(selectedRows.length === 0 ? "请先勾选一条记录" : "一次只能修改一条，请只勾选一条");
       return;
     }
-    setEditing({ ...selectedRows[0] });
+    openEdit(selectedRows[0]);
   };
 
   const onBatchDelete = async () => {
@@ -440,7 +446,7 @@ export function BidProjectsPage() {
                       <button
                         type="button"
                         className="mr-2 text-[#2563eb] hover:underline"
-                        onClick={() => setEditing({ ...row })}
+                        onClick={() => openEdit(row)}
                       >
                         修改
                       </button>
@@ -491,7 +497,10 @@ export function BidProjectsPage() {
                 <Input value={editing.serial_no} onChange={(e) => setEditing({ ...editing, serial_no: e.target.value })} />
               </Field>
               <Field label="开标时间">
-                <Input value={editing.open_time} onChange={(e) => setEditing({ ...editing, open_time: e.target.value })} placeholder="如 2025-01-15" />
+                <DateInput
+                  value={editing.open_time}
+                  onChange={(v) => setEditing({ ...editing, open_time: v })}
+                />
               </Field>
               <Field label="投标员">
                 <Input value={editing.bidder} onChange={(e) => setEditing({ ...editing, bidder: e.target.value })} />

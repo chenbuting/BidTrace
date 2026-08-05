@@ -30,8 +30,10 @@ import {
 } from "@/api/bidtrace";
 import { StatsImportDialog } from "@/components/StatsImportDialog";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toIsoDate } from "@/lib/dates";
 import { can, cn } from "@/lib/utils";
 
 const EMPTY: BidDeposit = {
@@ -155,11 +157,15 @@ export function DepositsPage() {
     setSelected(next);
   };
 
+  const openEdit = (row: BidDeposit) => {
+    setEditing({ ...row, apply_time: toIsoDate(row.apply_time) });
+  };
+
   const onSave = async () => {
     if (!editing) return;
     try {
       const { id, ...rest } = editing;
-      await saveBidDeposit(rest, id || undefined);
+      await saveBidDeposit({ ...rest, apply_time: toIsoDate(rest.apply_time) }, id || undefined);
       setEditing(null);
       await load(page, filters);
     } catch (e) {
@@ -182,7 +188,7 @@ export function DepositsPage() {
       alert(selectedRows.length === 0 ? "请先勾选一条记录" : "一次只能修改一条，请只勾选一条");
       return;
     }
-    setEditing({ ...selectedRows[0] });
+    openEdit(selectedRows[0]);
   };
 
   const onBatchDelete = async () => {
@@ -448,7 +454,7 @@ export function DepositsPage() {
                       <button
                         type="button"
                         className="mr-2 text-[#2563eb] hover:underline"
-                        onClick={() => setEditing({ ...row })}
+                        onClick={() => openEdit(row)}
                       >
                         修改
                       </button>
@@ -499,7 +505,10 @@ export function DepositsPage() {
                 <Input value={editing.serial_no} onChange={(e) => setEditing({ ...editing, serial_no: e.target.value })} />
               </Field>
               <Field label="申请时间">
-                <Input value={editing.apply_time} onChange={(e) => setEditing({ ...editing, apply_time: e.target.value })} placeholder="如 2025-01-15" />
+                <DateInput
+                  value={editing.apply_time}
+                  onChange={(v) => setEditing({ ...editing, apply_time: v })}
+                />
               </Field>
               <Field label="项目名称">
                 <Input value={editing.project_name} onChange={(e) => setEditing({ ...editing, project_name: e.target.value })} />
