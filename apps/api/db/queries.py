@@ -1152,6 +1152,168 @@ INQUIRY_FIELDS = [
     "deadline",
 ]
 
+INQUIRY_FIELD_LABELS: dict[str, str] = {
+    "register_date": "报名时间",
+    "platform_name": "平台",
+    "project_name": "项目名",
+    "is_bid": "是否投标",
+    "is_registered": "是否报名",
+    "file_received": "文件是否领取",
+    "is_paid": "是否交费",
+    "overview_done": "概况是否完成",
+    "skip_reason_category": "未参与原因类别",
+    "skip_reason_detail": "参与状态或未参与详细原因",
+    "deadline": "报名截止时间",
+}
+
+# 匹配键字段（对比时跳过）
+INQUIRY_MATCH_FIELDS = ("register_date", "platform_name", "project_name")
+
+
+def inquiry_match_key(register_date: Any, platform_name: Any, project_name: Any) -> str:
+    """报名时间+平台+项目名作为匹配键。"""
+    return (
+        f"{_normalize_date(_norm_key_part(register_date))}\n"
+        f"{_norm_key_part(platform_name)}\n"
+        f"{_norm_key_part(project_name)}"
+    )
+
+
+def build_inquiry_index() -> dict[str, dict[str, Any]]:
+    """询标匹配索引（同键取 id 最小）。"""
+    items, _ = list_inquiries(limit=20000, offset=0)
+    index: dict[str, dict[str, Any]] = {}
+    for item in items:
+        key = inquiry_match_key(item.get("register_date"), item.get("platform_name"), item.get("project_name"))
+        if not key.strip() or key == "\n\n":
+            continue
+        prev = index.get(key)
+        if prev is None or int(item["id"]) < int(prev["id"]):
+            index[key] = item
+    return index
+
+
+def diff_inquiry_fields(existing: dict[str, Any], incoming: dict[str, Any]) -> list[dict[str, Any]]:
+    """询标字段差异（跳过匹配键）。"""
+    diffs: list[dict[str, Any]] = []
+    for field in INQUIRY_FIELDS:
+        if field in INQUIRY_MATCH_FIELDS:
+            continue
+        old_s = _norm_key_part(existing.get(field, ""))
+        new_s = _norm_key_part(incoming.get(field, ""))
+        if field in ("register_date", "deadline"):
+            old_s = _normalize_date(old_s)
+            new_s = _normalize_date(new_s)
+        if old_s != new_s:
+            diffs.append(
+                {
+                    "field": field,
+                    "label": INQUIRY_FIELD_LABELS.get(field, field),
+                    "old": old_s,
+                    "new": new_s,
+                }
+            )
+    return diffs
+
+
+def clear_all_inquiries() -> int:
+    """清空询标表。"""
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM inquiries")
+        conn.commit()
+        return int(cur.rowcount)
+    finally:
+        conn.close()
+
+
+def create_inquiry_backup(
+    *,
+    reason: str,
+    user_id: Optional[int],
+    keep_latest: int = 5,
+) -> dict[str, Any]:
+    """备份当前全部询标；只保留最近 keep_latest 份。"""
+    import json
+
+    items, _ = list_inquiries(limit=20000, offset=0)
+    payload = [{k: row.get(k) for k in ["id", *INQUIRY_FIELDS]} for row in items]
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO inquiry_backups (reason, row_count, payload, created_by)
+            VALUES (?, ?, ?, ?)
+            """,
+            (reason, len(payload), json.dumps(payload, ensure_ascii=False), user_id),
+        )
+        conn.commit()
+        backup_id = int(cur.lastrowid)
+        conn.execute(
+            """
+            DELETE FROM inquiry_backups
+            WHERE id NOT IN (
+                SELECT id FROM inquiry_backups ORDER BY id DESC LIMIT ?
+            )
+            """,
+            (keep_latest,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": backup_id, "row_count": len(payload), "reason": reason}
+
+
+def latest_inquiry_backup() -> Optional[dict[str, Any]]:
+    """最近一次询标备份元信息。"""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, reason, row_count, created_by, created_at
+            FROM inquiry_backups
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def restore_latest_inquiry_backup(user_id: Optional[int]) -> dict[str, Any]:
+    """用最近一次备份覆盖当前询标表。"""
+    import json
+
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, reason, row_count, payload, created_at FROM inquiry_backups ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return {"ok": False, "restored": 0, "message": "没有可恢复的备份"}
+        backup = _row_to_dict(row)
+        payload = json.loads(backup.get("payload") or "[]")
+        conn.execute("DELETE FROM inquiries")
+        for data in payload:
+            cols = INQUIRY_FIELDS + ["created_by", "updated_by"]
+            values = [data.get(k, "") for k in INQUIRY_FIELDS]
+            values.extend([user_id, user_id])
+            placeholders = ", ".join("?" for _ in cols)
+            conn.execute(
+                f"INSERT INTO inquiries ({', '.join(cols)}) VALUES ({placeholders})",
+                values,
+            )
+        conn.commit()
+        return {
+            "ok": True,
+            "restored": len(payload),
+            "backup_id": backup["id"],
+            "backup_at": backup.get("created_at"),
+        }
+    finally:
+        conn.close()
+
 
 def list_inquiries(
     *,

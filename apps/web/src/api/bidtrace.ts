@@ -300,6 +300,36 @@ export async function importInquiries(file: File) {
   });
 }
 
+export async function previewInquiryImport(file: File, mode: "incremental" | "full") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  return api<StatsImportPreview>("/api/inquiries/import/preview", { method: "POST", body: fd });
+}
+
+export async function commitInquiryImport(
+  file: File,
+  mode: "incremental" | "full",
+  decisions: { row_index: number; existing_id: number; action: "keep" | "overwrite" }[],
+) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("mode", mode);
+  fd.append("decisions_json", JSON.stringify(decisions));
+  return api<StatsImportCommitResult>("/api/inquiries/import/commit", { method: "POST", body: fd });
+}
+
+export async function fetchLatestInquiryBackup() {
+  return api<{ backup: StatsBackupInfo | null }>("/api/inquiries/backup/latest");
+}
+
+export async function restoreInquiryBackup() {
+  return api<{ ok: boolean; restored: number; backup_id?: number; backup_at?: string }>(
+    "/api/inquiries/backup/restore",
+    { method: "POST" },
+  );
+}
+
 export async function exportInquiries(params: Record<string, string | number> = {}) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -526,6 +556,8 @@ export type StatsImportConflict = {
   project_name?: string;
   open_time?: string;
   platform?: string;
+  platform_name?: string;
+  register_date?: string;
   apply_time?: string;
   payee?: string;
   name?: string;

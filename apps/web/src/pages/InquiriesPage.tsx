@@ -19,12 +19,17 @@ import {
   downloadInquiryTemplate,
   exportInquiries,
   fetchInquiries,
+  fetchLatestInquiryBackup,
   fetchPlatformOptions,
-  importInquiries,
+  previewInquiryImport,
+  commitInquiryImport,
+  restoreInquiryBackup,
   saveInquiry,
   type Inquiry,
+  type StatsBackupInfo,
   type UserInfo,
 } from "@/api/bidtrace";
+import { StatsImportDialog } from "@/components/StatsImportDialog";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
@@ -110,7 +115,18 @@ export function InquiriesPage() {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Inquiry | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [backup, setBackup] = useState<StatsBackupInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const refreshBackup = async () => {
+    try {
+      const r = await fetchLatestInquiryBackup();
+      setBackup(r.backup);
+    } catch {
+      setBackup(null);
+    }
+  };
 
   const load = async (nextPage = page, nextFilters = filters, nextSize = pageSize) => {
     setLoading(true);
@@ -142,6 +158,7 @@ export function InquiriesPage() {
 
   useEffect(() => {
     void load(1, filters);
+    void refreshBackup();
     void fetchPlatformOptions()
       .then((r) => setOptions(r.items))
       .catch(() => setOptions([]));
@@ -242,14 +259,30 @@ export function InquiriesPage() {
     }
   };
 
-  const onImport = async (file: File) => {
+  const onImport = (file: File) => {
+    setImportFile(file);
+  };
+
+  const onRestoreBackup = async () => {
+    if (!backup) {
+      alert("当前没有可恢复的备份");
+      return;
+    }
+    if (
+      !confirm(
+        `确定恢复 ${backup.created_at} 的备份吗？\n将用备份中的 ${backup.row_count} 条覆盖当前询标报名表。`,
+      )
+    ) {
+      return;
+    }
     try {
-      const r = await importInquiries(file);
-      alert(`成功导入 ${r.imported} 条`);
+      const r = await restoreInquiryBackup();
+      alert(`已恢复 ${r.restored} 条（备份时间 ${r.backup_at || ""}）`);
       setPage(1);
       await load(1, filters);
+      await refreshBackup();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "导入失败");
+      setError(e instanceof ApiError ? e.message : "恢复失败");
     }
   };
 
@@ -398,7 +431,7 @@ export function InquiriesPage() {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void onImport(f);
+                  if (f) onImport(f);
                   e.target.value = "";
                 }}
               />
@@ -409,6 +442,11 @@ export function InquiriesPage() {
               <Button variant="outline" onClick={() => void onDownloadTemplate()}>
                 下载模板
               </Button>
+              {backup ? (
+                <Button variant="ghost" onClick={() => void onRestoreBackup()} title={backup.created_at}>
+                  恢复上一版
+                </Button>
+              ) : null}
             </>
           ) : null}
           {can(perms, "inquiry.export") ? (
@@ -658,6 +696,34 @@ export function InquiriesPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {importFile ? (
+        <StatsImportDialog
+          title="导入询标报名"
+          file={importFile}
+          incrementalDesc="新记录直接写入。若「报名时间 + 平台 + 项目名」都与库中已有记录相同，会单独列出不一样的字段，由你选择保留原数据或用 Excel 覆盖。表头必须与固定模板完全一致（报名时间、平台、项目名、是否投标、是否报名、文件是否领取、是否交费、概况是否完成、未参与原因类别、参与状态或未参与详细原因、报名截止时间），否则会拒绝导入。"
+          fullDesc="先自动备份当前全部询标报名，再清空表，再导入 Excel 全部内容。之后可用「恢复上一版」找回覆盖前数据。表头必须与固定模板完全一致，否则会拒绝导入。"
+          conflictKeyHint="报名时间+平台+项目名"
+          previewFn={previewInquiryImport}
+          commitFn={commitInquiryImport}
+          fetchBackup={fetchLatestInquiryBackup}
+          restoreBackup={restoreInquiryBackup}
+          renderConflictTitle={(c) => c.project_name || "（无项目名）"}
+          renderConflictSubtitle={(c) => (
+            <>
+              {c.register_date || "—"} · {c.platform_name || "—"}
+            </>
+          )}
+          onClose={() => setImportFile(null)}
+          onDone={(message) => {
+            setImportFile(null);
+            alert(message);
+            setPage(1);
+            void load(1, filters);
+            void refreshBackup();
+          }}
+        />
       ) : null}
     </div>
   );

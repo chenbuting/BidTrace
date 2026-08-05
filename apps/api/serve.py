@@ -1143,6 +1143,22 @@ async def api_import_inquiries(
     file: UploadFile = File(...),
     user: dict[str, Any] = Depends(require_perm("inquiry.import")),
 ) -> dict[str, Any]:
+    """兼容旧入口：请改用 preview/commit。"""
+    raise HTTPException(
+        status_code=400,
+        detail="请使用新的导入流程：先预览再确认（增量追加 / 全部覆盖）",
+    )
+
+
+@app.post("/api/inquiries/import/preview")
+async def api_import_inquiries_preview(
+    file: UploadFile = File(...),
+    mode: str = Form("incremental"),
+    user: dict[str, Any] = Depends(require_perm("inquiry.import")),
+) -> dict[str, Any]:
+    """导入预览：分析新增与冲突（报名时间+平台+项目名相同）。"""
+    if mode not in ("incremental", "full"):
+        raise HTTPException(status_code=400, detail="mode 只能是 incremental 或 full")
     content = await file.read()
     try:
         rows = parse_inquiries_xlsx(content)
@@ -1150,9 +1166,164 @@ async def api_import_inquiries(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not rows:
         raise HTTPException(status_code=400, detail="模板正确，但没有有效数据行（需有平台或项目名）")
-    n = q.bulk_insert_inquiries(rows, int(user["id"]))
-    q.add_audit(int(user["id"]), user["username"], "inquiry.import", "inquiries", f"导入 {n} 条")
-    return {"ok": True, "imported": n}
+
+    index = q.build_inquiry_index()
+    conflicts: list[dict[str, Any]] = []
+    new_count = 0
+    for i, row in enumerate(rows):
+        key = q.inquiry_match_key(row.get("register_date"), row.get("platform_name"), row.get("project_name"))
+        existing = index.get(key) if key.strip() and key != "\n\n" else None
+        if mode == "full" or existing is None:
+            new_count += 1
+            continue
+        diffs = q.diff_inquiry_fields(existing, row)
+        conflicts.append(
+            {
+                "row_index": i,
+                "existing_id": int(existing["id"]),
+                "register_date": row.get("register_date") or "",
+                "platform_name": row.get("platform_name") or "",
+                "project_name": row.get("project_name") or "",
+                "identical": len(diffs) == 0,
+                "diffs": diffs,
+                "existing": existing,
+                "incoming": {**row, "id": 0},
+            }
+        )
+
+    backup = q.latest_inquiry_backup()
+    return {
+        "mode": mode,
+        "total": len(rows),
+        "new_count": new_count if mode == "incremental" else len(rows),
+        "conflict_count": len(conflicts) if mode == "incremental" else 0,
+        "conflicts": conflicts if mode == "incremental" else [],
+        "mode_label": "增量追加" if mode == "incremental" else "全部覆盖",
+        "mode_desc": (
+            "增量追加：新记录直接写入；报名时间+平台+项目名相同的记录需人工选择「保留」或「覆盖」。"
+            if mode == "incremental"
+            else "全部覆盖：会先备份当前全部询标报名，再清空表并导入 Excel 全部内容；可一键恢复上一版备份。"
+        ),
+        "latest_backup": backup,
+    }
+
+
+@app.post("/api/inquiries/import/commit")
+async def api_import_inquiries_commit(
+    file: UploadFile = File(...),
+    mode: str = Form("incremental"),
+    decisions_json: str = Form("[]"),
+    user: dict[str, Any] = Depends(require_perm("inquiry.import")),
+) -> dict[str, Any]:
+    """确认导入：按模式写入。"""
+    if mode not in ("incremental", "full"):
+        raise HTTPException(status_code=400, detail="mode 只能是 incremental 或 full")
+    try:
+        raw_decisions = json.loads(decisions_json or "[]")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="decisions_json 不是合法 JSON") from exc
+
+    content = await file.read()
+    try:
+        rows = parse_inquiries_xlsx(content)
+    except TemplateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not rows:
+        raise HTTPException(status_code=400, detail="模板正确，但没有有效数据行（需有平台或项目名）")
+
+    uid = int(user["id"])
+
+    if mode == "full":
+        backup = q.create_inquiry_backup(reason="full_overwrite", user_id=uid)
+        cleared = q.clear_all_inquiries()
+        inserted = q.bulk_insert_inquiries(rows, uid)
+        q.add_audit(
+            uid,
+            user["username"],
+            "inquiry.import_full",
+            "inquiries",
+            f"清空 {cleared} 条，导入 {inserted} 条，备份#{backup['id']}",
+        )
+        return {
+            "ok": True,
+            "mode": mode,
+            "inserted": inserted,
+            "updated": 0,
+            "kept": 0,
+            "backup": backup,
+        }
+
+    decisions_map: dict[int, str] = {}
+    for d in raw_decisions:
+        try:
+            ri = int(d["row_index"])
+            action = str(d.get("action") or "keep")
+        except (KeyError, TypeError, ValueError):
+            continue
+        if action not in ("keep", "overwrite"):
+            action = "keep"
+        decisions_map[ri] = action
+
+    index = q.build_inquiry_index()
+    inserted = 0
+    updated = 0
+    kept = 0
+    for i, row in enumerate(rows):
+        key = q.inquiry_match_key(row.get("register_date"), row.get("platform_name"), row.get("project_name"))
+        existing = index.get(key) if key.strip() and key != "\n\n" else None
+        if existing is None:
+            created = q.create_inquiry(row, uid)
+            inserted += 1
+            index[key] = created
+            continue
+        action = decisions_map.get(i, "keep")
+        if action == "overwrite":
+            q.update_inquiry(int(existing["id"]), row, uid)
+            updated += 1
+            refreshed = q.get_inquiry(int(existing["id"]))
+            if refreshed:
+                index[key] = refreshed
+        else:
+            kept += 1
+
+    q.add_audit(
+        uid,
+        user["username"],
+        "inquiry.import_incremental",
+        "inquiries",
+        f"新增 {inserted}，覆盖 {updated}，保留 {kept}",
+    )
+    return {
+        "ok": True,
+        "mode": mode,
+        "inserted": inserted,
+        "updated": updated,
+        "kept": kept,
+    }
+
+
+@app.get("/api/inquiries/backup/latest")
+def api_latest_inquiry_backup(
+    user: dict[str, Any] = Depends(require_perm("inquiry.import")),
+) -> dict[str, Any]:
+    return {"backup": q.latest_inquiry_backup()}
+
+
+@app.post("/api/inquiries/backup/restore")
+def api_restore_inquiry_backup(
+    user: dict[str, Any] = Depends(require_perm("inquiry.import")),
+) -> dict[str, Any]:
+    result = q.restore_latest_inquiry_backup(int(user["id"]))
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "恢复失败")
+    q.add_audit(
+        int(user["id"]),
+        user["username"],
+        "inquiry.restore_backup",
+        f"backup:{result.get('backup_id')}",
+        f"恢复 {result.get('restored')} 条",
+    )
+    return result
 
 
 @app.patch("/api/inquiries/{iid}")

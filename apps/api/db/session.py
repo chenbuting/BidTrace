@@ -171,6 +171,15 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             );
 
+            CREATE TABLE IF NOT EXISTS inquiry_backups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reason TEXT NOT NULL DEFAULT '',
+                row_count INTEGER NOT NULL DEFAULT 0,
+                payload TEXT NOT NULL DEFAULT '[]',
+                created_by INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
             -- 可配置角色：权限包存在 role_permissions，用户挂 roles.code
             CREATE TABLE IF NOT EXISTS roles (
                 code TEXT PRIMARY KEY,
