@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label";
 /** 登录页 */
 export function LoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("change-me");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,46 +40,37 @@ export function LoginPage() {
           <p className="mt-1 text-[13px] text-[#6b6b6b]">BidTrace · 投标部台账</p>
         </div>
 
-        <div className="space-y-3">
-          <div className="rounded-xl border border-dashed border-black/[0.12] bg-white px-4 py-3 text-[12px] text-[#6b6b6b]">
-            <p className="font-medium text-[#26251e]">默认测试账号</p>
-            <p className="mt-1 font-mono text-[#4a4a4a]">
-              admin <span className="mx-1 text-[#c4c4c4]">/</span> change-me
-            </p>
-          </div>
+        <div className="rounded-xl border border-black/[0.08] bg-white p-5">
+          <h2 className="text-[15px] font-semibold text-[#26251e]">登录</h2>
+          <p className="mt-1 text-[12px] text-[#6b6b6b]">局域网多人共用，按角色权限访问</p>
 
-          <div className="rounded-xl border border-black/[0.08] bg-white p-5">
-            <h2 className="text-[15px] font-semibold text-[#26251e]">登录</h2>
-            <p className="mt-1 text-[12px] text-[#6b6b6b]">局域网多人共用，按角色权限访问</p>
-
-            <form className="mt-5 space-y-3.5" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <Label htmlFor="username">用户名</Label>
-                <Input
-                  id="username"
-                  autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">密码</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-              {error ? <p className="text-[12px] text-red-600">{error}</p> : null}
-              <Button className="w-full" size="lg" type="submit" disabled={loading}>
-                {loading ? "登录中…" : "进入系统"}
-              </Button>
-            </form>
-          </div>
+          <form className="mt-5 space-y-3.5" onSubmit={handleSubmit}>
+            <div className="space-y-1.5">
+              <Label htmlFor="username">用户名</Label>
+              <Input
+                id="username"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">密码</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error ? <p className="text-[12px] text-red-600">{error}</p> : null}
+            <Button className="w-full" size="lg" type="submit" disabled={loading}>
+              {loading ? "登录中…" : "进入系统"}
+            </Button>
+          </form>
         </div>
       </div>
     </div>
