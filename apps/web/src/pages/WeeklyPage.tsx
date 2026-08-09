@@ -215,8 +215,8 @@ export function WeeklyPage() {
       const data = await saveWeeklyReport(report.id, {
         display_name: report.display_name,
         done_items: report.done_items,
-        problems: report.problems,
-        solutions: report.solutions,
+        problem_items: report.problem_items || [],
+        solution_items: report.solution_items || [],
         plan_items: report.plan_items,
       });
       setReport(data.item);
@@ -238,8 +238,8 @@ export function WeeklyPage() {
       await saveWeeklyReport(report.id, {
         display_name: report.display_name,
         done_items: report.done_items,
-        problems: report.problems,
-        solutions: report.solutions,
+        problem_items: report.problem_items || [],
+        solution_items: report.solution_items || [],
         plan_items: report.plan_items,
       });
       const data = await submitWeeklyReport(report.id);
@@ -460,34 +460,28 @@ export function WeeklyPage() {
 
               <ItemEditor
                 label="所做事项"
-                items={report.done_items}
+                items={report.done_items || []}
                 disabled={!editable}
                 onChange={(done_items) => setReport({ ...report, done_items })}
               />
 
-              <div className="space-y-1">
-                <Label>所遇问题</Label>
-                <textarea
-                  disabled={!editable}
-                  className="min-h-[88px] w-full rounded-lg border border-black/[0.12] bg-white px-3 py-2 text-[13px] outline-none focus:border-black/30 disabled:bg-black/[0.02]"
-                  value={report.problems}
-                  onChange={(e) => setReport({ ...report, problems: e.target.value })}
-                />
-              </div>
+              <ItemEditor
+                label="所遇问题"
+                items={report.problem_items || []}
+                disabled={!editable}
+                onChange={(problem_items) => setReport({ ...report, problem_items })}
+              />
 
-              <div className="space-y-1">
-                <Label>解决意见</Label>
-                <textarea
-                  disabled={!editable}
-                  className="min-h-[88px] w-full rounded-lg border border-black/[0.12] bg-white px-3 py-2 text-[13px] outline-none focus:border-black/30 disabled:bg-black/[0.02]"
-                  value={report.solutions}
-                  onChange={(e) => setReport({ ...report, solutions: e.target.value })}
-                />
-              </div>
+              <ItemEditor
+                label="解决意见"
+                items={report.solution_items || []}
+                disabled={!editable}
+                onChange={(solution_items) => setReport({ ...report, solution_items })}
+              />
 
               <ItemEditor
                 label="预期工作"
-                items={report.plan_items}
+                items={report.plan_items || []}
                 disabled={!editable}
                 onChange={(plan_items) => setReport({ ...report, plan_items })}
               />

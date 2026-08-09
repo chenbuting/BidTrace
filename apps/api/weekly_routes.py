@@ -24,8 +24,8 @@ class WeeklyItem(BaseModel):
 class WeeklySaveBody(BaseModel):
     display_name: str = ""
     done_items: list[WeeklyItem] = Field(default_factory=list)
-    problems: str = ""
-    solutions: str = ""
+    problem_items: list[WeeklyItem] = Field(default_factory=list)
+    solution_items: list[WeeklyItem] = Field(default_factory=list)
     plan_items: list[WeeklyItem] = Field(default_factory=list)
 
 
@@ -201,8 +201,10 @@ def create_weekly_router(
         if int(item["user_id"]) != int(user["id"]) and not has_perm(user["_perms"], "weekly.edit_others"):
             raise HTTPException(status_code=403, detail="只能提交自己的周报")
         done = item.get("done_items") or []
-        if not done and not str(item.get("problems") or "").strip() and not (item.get("plan_items") or []):
-            raise HTTPException(status_code=400, detail="请至少填写所做事项、所遇问题或预期工作")
+        problems = item.get("problem_items") or []
+        plans = item.get("plan_items") or []
+        if not done and not problems and not plans and not (item.get("solution_items") or []):
+            raise HTTPException(status_code=400, detail="请至少填写所做事项、所遇问题、解决意见或预期工作")
         updated = w.submit_report(rid)
         q.add_audit(int(user["id"]), user["username"], "weekly.submit", f"weekly:{rid}", "")
         return {"item": updated}

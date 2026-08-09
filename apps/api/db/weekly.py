@@ -40,17 +40,21 @@ def _loads_items(raw: Any) -> list[dict[str, str]]:
     try:
         data = json.loads(raw or "[]")
     except (TypeError, json.JSONDecodeError):
-        return []
+        data = None
     out: list[dict[str, str]] = []
-    if not isinstance(data, list):
+    if isinstance(data, list):
+        for it in data:
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            body = str(it.get("body") or "").strip()
+            if title or body:
+                out.append({"title": title, "body": body})
         return out
-    for it in data:
-        if not isinstance(it, dict):
-            continue
-        title = str(it.get("title") or "").strip()
-        body = str(it.get("body") or "").strip()
-        if title or body:
-            out.append({"title": title, "body": body})
+    # 兼容旧版：problems/solutions 曾是纯文本
+    text = str(raw or "").strip()
+    if text and not text.startswith("["):
+        return [{"title": "", "body": text}]
     return out
 
 
@@ -71,6 +75,11 @@ def _public(row: dict[str, Any]) -> dict[str, Any]:
     item = dict(row)
     item["done_items"] = _loads_items(item.get("done_items"))
     item["plan_items"] = _loads_items(item.get("plan_items"))
+    item["problem_items"] = _loads_items(item.get("problems"))
+    item["solution_items"] = _loads_items(item.get("solutions"))
+    # 前端统一用 items；去掉旧字符串字段避免混淆
+    item.pop("problems", None)
+    item.pop("solutions", None)
     item["week_label"] = week_label(
         date.fromisoformat(str(item["week_start"])[:10]),
         date.fromisoformat(str(item["week_end"])[:10]),
@@ -119,7 +128,7 @@ def ensure_user_week_report(
             INSERT INTO weekly_reports (
               user_id, username, display_name, week_start, week_end,
               done_items, problems, solutions, plan_items, status
-            ) VALUES (?, ?, ?, ?, ?, '[]', '', '', '[]', 'draft')
+            ) VALUES (?, ?, ?, ?, ?, '[]', '[]', '[]', '[]', 'draft')
             """,
             (user_id, username, display_name or username, start.isoformat(), end.isoformat()),
         )
@@ -142,12 +151,19 @@ def update_report(rid: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
     if "plan_items" in data:
         fields.append("plan_items = ?")
         values.append(_dumps_items(data.get("plan_items")))
-    if "problems" in data:
+    if "problem_items" in data:
         fields.append("problems = ?")
-        values.append(str(data.get("problems") or "").strip())
-    if "solutions" in data:
+        values.append(_dumps_items(data.get("problem_items")))
+    if "solution_items" in data:
         fields.append("solutions = ?")
-        values.append(str(data.get("solutions") or "").strip())
+        values.append(_dumps_items(data.get("solution_items")))
+    # 兼容旧请求体
+    if "problems" in data and "problem_items" not in data:
+        fields.append("problems = ?")
+        values.append(_dumps_items([{"title": "", "body": str(data.get("problems") or "")}]))
+    if "solutions" in data and "solution_items" not in data:
+        fields.append("solutions = ?")
+        values.append(_dumps_items([{"title": "", "body": str(data.get("solutions") or "")}]))
     if "display_name" in data:
         fields.append("display_name = ?")
         values.append(str(data.get("display_name") or "").strip())

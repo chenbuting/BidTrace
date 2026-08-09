@@ -763,8 +763,8 @@ export type WeeklyReport = {
   week_end: string;
   week_label: string;
   done_items: WeeklyItem[];
-  problems: string;
-  solutions: string;
+  problem_items: WeeklyItem[];
+  solution_items: WeeklyItem[];
   plan_items: WeeklyItem[];
   status: "draft" | "submitted" | string;
   submitted_at?: string | null;
@@ -821,8 +821,8 @@ export async function saveWeeklyReport(
   body: {
     display_name?: string;
     done_items: WeeklyItem[];
-    problems: string;
-    solutions: string;
+    problem_items: WeeklyItem[];
+    solution_items: WeeklyItem[];
     plan_items: WeeklyItem[];
   },
 ) {

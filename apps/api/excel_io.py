@@ -334,91 +334,168 @@ def empty_deposits_template_xlsx() -> bytes:
 
 
 def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
-    """按「工作报表」模板导出单份周报。"""
-    from openpyxl.styles import Alignment, Border, Font, Side
+    """按「工作报表」模板样式导出单份周报（对齐郁晨杰周报 Excel）。"""
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    from openpyxl.cell.text import InlineFont
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.styles.colors import Color
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    thin = Border(
-        left=Side(style="thin"),
-        right=Side(style="thin"),
-        top=Side(style="thin"),
-        bottom=Side(style="thin"),
-    )
-    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
-    def merge_row(r: int, value: str, *, header: bool = False, height: float = 22) -> None:
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
-        cell = ws.cell(r, 1, value)
-        cell.alignment = center if header else left
-        cell.font = Font(bold=True, size=14) if header else Font(size=11)
+    # 与手工模板一致：细黑边框 + 分区浅蓝底（Office 主题色 Accent1 加亮）
+    thin_side = Side(style="thin", color="FF000000")
+    thin = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    header_fill = PatternFill(
+        fill_type="solid",
+        fgColor=Color(theme=4, tint=0.5999938962981048),
+    )
+    white_fill = PatternFill(fill_type="solid", fgColor="FFFFFFFF")
+    font_title = Font(name="宋体", size=20, bold=True, color="FF000000")
+    font_meta = Font(name="宋体", size=11, bold=True, color="FF000000")
+    font_section = Font(name="宋体", size=12, bold=True, color="FF000000")
+    font_fallback = Font(name="宋体", size=11, bold=False, color="FF000000")
+    # 条目富文本：编号标题加粗，正文不加粗
+    inline_bold = InlineFont(rFont="宋体", sz=11, b=True, color="FF000000")
+    inline_plain = InlineFont(rFont="宋体", sz=11, b=False, color="FF000000")
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left_center = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    # 列宽对齐模板
+    widths = {
+        "A": 8.44,
+        "B": 4.46,
+        "C": 12.0,
+        "D": 0.91,
+        "E": 11.0,
+        "F": 19.82,
+        "G": 41.73,
+    }
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    def paint_row(r: int) -> None:
         for c in range(1, 8):
             ws.cell(r, c).border = thin
+
+    def write_merged(
+        r: int,
+        value: Any,
+        *,
+        font: Font,
+        fill: PatternFill | None,
+        align: Alignment,
+        height: float,
+    ) -> None:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+        cell = ws.cell(r, 1)
+        cell.value = value
+        # 富文本以 InlineFont 为准；普通字符串仍用 cell.font
+        if not isinstance(value, CellRichText):
+            cell.font = font
+        cell.alignment = align
+        if fill is not None:
+            cell.fill = fill
+        paint_row(r)
         ws.row_dimensions[r].height = height
+
+    def format_item_rich(idx: int, title: str, body: str) -> tuple[Any, str]:
+        """返回 (单元格值, 纯文本用于估高)：标题加粗，正文不加粗。"""
+        title = (title or "").strip()
+        body = (body or "").strip()
+        head = f"{idx}.{title}" if title else f"{idx}."
+        if not body:
+            return CellRichText(TextBlock(inline_bold, head)), head
+        plain = f"{head}\n\n{body}"
+        rich = CellRichText(
+            TextBlock(inline_bold, head),
+            TextBlock(inline_plain, f"\n\n{body}"),
+        )
+        return rich, plain
+
+    def estimate_height(text: str, base: float = 36.0) -> float:
+        lines = max(1, text.count("\n") + 1)
+        # 长行按约 28 字折行估算
+        wrap_extra = 0
+        for line in text.split("\n"):
+            wrap_extra += max(0, (len(line) - 1) // 28)
+        return max(base, 18.0 + 16.0 * (lines + wrap_extra))
+
+    def write_items(items: list, *, empty_height: float, item_base: float) -> None:
+        nonlocal row
+        if not items:
+            write_merged(
+                row,
+                "",
+                font=font_fallback,
+                fill=white_fill,
+                align=align_left_center,
+                height=empty_height,
+            )
+            row += 1
+            return
+        for i, it in enumerate(items, start=1):
+            value, plain = format_item_rich(
+                i, str(it.get("title") or ""), str(it.get("body") or "")
+            )
+            write_merged(
+                row,
+                value,
+                font=font_fallback,
+                fill=white_fill,
+                align=align_left_center,
+                height=estimate_height(plain, item_base),
+            )
+            row += 1
 
     display = str(report.get("display_name") or report.get("username") or "")
     week_label = str(report.get("week_label") or "")
     done_items = report.get("done_items") or []
     plan_items = report.get("plan_items") or []
-    problems = str(report.get("problems") or "").strip()
-    solutions = str(report.get("solutions") or "").strip()
+    problem_items = report.get("problem_items") or []
+    solution_items = report.get("solution_items") or []
+    # 兼容旧字段
+    if not problem_items and str(report.get("problems") or "").strip():
+        problem_items = [{"title": "", "body": str(report.get("problems") or "").strip()}]
+    if not solution_items and str(report.get("solutions") or "").strip():
+        solution_items = [{"title": "", "body": str(report.get("solutions") or "").strip()}]
 
-    # 列宽
-    for c in range(1, 8):
-        ws.column_dimensions[chr(64 + c)].width = 12
+    # 第 1 行：标题
+    write_merged(1, "工 作 报 表", font=font_title, fill=None, align=align_center, height=36.6)
 
-    merge_row(1, "工 作 报 表", header=True, height=28)
+    # 第 2 行：制表人 / 时间
     ws.merge_cells("A2:E2")
     ws.merge_cells("F2:G2")
-    ws.cell(2, 1, f"制表人：{display}")
-    ws.cell(2, 6, f"时间：{week_label}")
-    for c in range(1, 8):
-        ws.cell(2, c).border = thin
-        ws.cell(2, c).alignment = Alignment(vertical="center", wrap_text=True)
-    ws.row_dimensions[2].height = 22
+    c_name = ws.cell(2, 1, f"制表人：{display}")
+    c_name.font = font_meta
+    c_name.alignment = align_left_center
+    c_time = ws.cell(2, 6, f"时间：{week_label}")
+    c_time.font = font_meta
+    c_time.alignment = align_left_center
+    paint_row(2)
+    ws.row_dimensions[2].height = 31.2
 
     row = 3
-    merge_row(row, "所做事项", header=True)
+    write_merged(row, "所做事项", font=font_section, fill=header_fill, align=align_center, height=31.0)
     row += 1
-    if not done_items:
-        merge_row(row, "", height=36)
-        row += 1
-    else:
-        for i, it in enumerate(done_items, start=1):
-            title = str(it.get("title") or "").strip()
-            body = str(it.get("body") or "").strip()
-            text = f"{i}.{title}" if title else f"{i}."
-            if body:
-                text = f"{text}\n\n{body}" if title else f"{i}.{body}"
-            merge_row(row, text, height=max(36, 18 + 14 * (1 + text.count("\n"))))
-            row += 1
+    write_items(done_items, empty_height=58.0, item_base=58.0)
 
-    # 空行分隔
-    merge_row(row, "", height=10)
+    # 模板里事项后有一空白行
+    write_merged(row, "", font=font_fallback, fill=white_fill, align=align_left_center, height=40.0)
     row += 1
-    merge_row(row, "所遇问题", header=True)
+
+    write_merged(row, "所遇问题", font=font_section, fill=header_fill, align=align_center, height=25.0)
     row += 1
-    merge_row(row, problems, height=max(36, 18 + 14 * max(1, problems.count("\n"))))
+    write_items(problem_items, empty_height=40.0, item_base=40.0)
+
+    write_merged(row, "解决意见", font=font_section, fill=header_fill, align=align_center, height=25.0)
     row += 1
-    merge_row(row, "解决意见", header=True)
+    write_items(solution_items, empty_height=40.0, item_base=40.0)
+
+    write_merged(row, "预期工作", font=font_section, fill=header_fill, align=align_center, height=25.0)
     row += 1
-    merge_row(row, solutions, height=max(36, 18 + 14 * max(1, solutions.count("\n"))))
-    row += 1
-    merge_row(row, "预期工作", header=True)
-    row += 1
-    if not plan_items:
-        merge_row(row, "", height=36)
-    else:
-        for i, it in enumerate(plan_items, start=1):
-            title = str(it.get("title") or "").strip()
-            body = str(it.get("body") or "").strip()
-            text = f"{i}.{title}" if title else f"{i}."
-            if body:
-                text = f"{text}\n{body}" if title else f"{i}.{body}"
-            merge_row(row, text, height=max(36, 18 + 14 * (1 + text.count("\n"))))
-            row += 1
+    write_items(plan_items, empty_height=58.0, item_base=58.0)
 
     buf = io.BytesIO()
     wb.save(buf)
