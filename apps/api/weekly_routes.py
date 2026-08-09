@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from db import queries as q
 from db import weekly as w
-from excel_io import export_weekly_report_xlsx
+from excel_io import export_weekly_report_xlsx, export_weekly_team_xlsx
 from permissions import has_perm
 
 
@@ -23,6 +23,13 @@ class WeeklyItem(BaseModel):
 
 class WeeklySaveBody(BaseModel):
     display_name: str = ""
+    done_items: list[WeeklyItem] = Field(default_factory=list)
+    problem_items: list[WeeklyItem] = Field(default_factory=list)
+    solution_items: list[WeeklyItem] = Field(default_factory=list)
+    plan_items: list[WeeklyItem] = Field(default_factory=list)
+
+
+class WeeklyTemplateBody(BaseModel):
     done_items: list[WeeklyItem] = Field(default_factory=list)
     problem_items: list[WeeklyItem] = Field(default_factory=list)
     solution_items: list[WeeklyItem] = Field(default_factory=list)
@@ -58,7 +65,7 @@ def create_weekly_router(
         week_start: str = Query(""),
         user: dict[str, Any] = Depends(require_login),
     ) -> dict[str, Any]:
-        """当前/指定自然周信息。"""
+        """当前/指定工作周信息（周日～周六）。"""
         _ = user
         if week_start.strip():
             try:
@@ -71,7 +78,8 @@ def create_weekly_router(
         today = date.today()
         cur, _ = w.week_bounds(today)
         options = []
-        for i in range(0, 8):
+        # 含下一周 + 近 8 周，便于前后切换后仍能在下拉里找到
+        for i in range(-1, 8):
             s = cur - timedelta(days=7 * i)
             e = s + timedelta(days=6)
             options.append(
@@ -228,6 +236,85 @@ def create_weekly_router(
         q.add_audit(int(user["id"]), user["username"], "weekly.reopen", f"weekly:{rid}", "")
         return {"item": updated}
 
+    @router.get("/template")
+    def api_get_weekly_template(
+        user: dict[str, Any] = Depends(require_any_perm("weekly.view_own", "weekly.view_all")),
+    ) -> dict[str, Any]:
+        """读取当前用户常用模板。"""
+        return w.get_template(int(user["id"]))
+
+    @router.put("/template")
+    def api_save_weekly_template(
+        body: WeeklyTemplateBody,
+        user: dict[str, Any] = Depends(require_any_perm("weekly.edit_own", "weekly.edit_others")),
+    ) -> dict[str, Any]:
+        """把内容存为常用模板（覆盖）。"""
+        saved = w.save_template(int(user["id"]), body.model_dump())
+        q.add_audit(int(user["id"]), user["username"], "weekly.template_save", f"user:{user['id']}", "")
+        return saved
+
+    @router.get("/prev-week-content")
+    def api_prev_week_content(
+        week_start: str = Query(""),
+        user_id: int = Query(0, ge=0),
+        user: dict[str, Any] = Depends(require_any_perm("weekly.view_own", "weekly.view_all")),
+    ) -> dict[str, Any]:
+        """取上一周已有内容，供复制（不自动建草稿）。
+
+        user_id=0 表示当前用户；查他人需 view_all 或 edit_others。
+        """
+        if week_start.strip():
+            try:
+                start = w.parse_week_start(week_start)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            start, _ = w.week_bounds()
+        target_uid = int(user_id) if user_id else int(user["id"])
+        if target_uid != int(user["id"]):
+            perms = user["_perms"]
+            if not (
+                has_perm(perms, "weekly.view_all")
+                or has_perm(perms, "weekly.edit_others")
+            ):
+                raise HTTPException(status_code=403, detail="无权查看他人上周内容")
+        return w.get_prev_week_content(target_uid, start.isoformat())
+
+    @router.get("/export-team")
+    def api_export_weekly_team(
+        week_start: str = Query(""),
+        user: dict[str, Any] = Depends(require_perm("weekly.view_all")),
+    ) -> Response:
+        """组长：合并导出指定周「已提交」周报，每人一个工作表。"""
+        if week_start.strip():
+            try:
+                start = w.parse_week_start(week_start)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            start, _ = w.week_bounds()
+        reports = w.list_submitted_reports_for_week(start.isoformat())
+        if not reports:
+            raise HTTPException(status_code=400, detail="本周暂无已提交周报可导出")
+        try:
+            data = export_weekly_team_xlsx(reports)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        label = w.week_label(start, start + timedelta(days=6))
+        safe = f"weekly-team-{label}.xlsx"
+        q.add_audit(
+            int(user["id"]),
+            user["username"],
+            "weekly.export_team",
+            f"week:{start.isoformat()}",
+            f"count={len(reports)}",
+        )
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={safe}"},
+        )
+
     @router.get("/reports/{rid}/export")
     def api_export_weekly_report(
         rid: int,
@@ -238,6 +325,14 @@ def create_weekly_router(
             raise HTTPException(status_code=404, detail="周报不存在")
         if not _can_view(user, item):
             raise HTTPException(status_code=403, detail="无权限导出")
+        # 组长从统计页导出：仅允许已提交；本人导出自己的不限状态
+        is_own = int(item["user_id"]) == int(user["id"])
+        if (
+            not is_own
+            and item.get("status") != "submitted"
+            and has_perm(user["_perms"], "weekly.view_all")
+        ):
+            raise HTTPException(status_code=400, detail="只能导出已提交的周报")
         data = export_weekly_report_xlsx(item)
         safe = f"weekly-{item.get('week_label') or 'report'}-{item.get('id')}.xlsx"
         q.add_audit(int(user["id"]), user["username"], "weekly.export", f"weekly:{rid}", safe)

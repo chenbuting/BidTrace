@@ -201,6 +201,16 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_weekly_week ON weekly_reports(week_start);
             CREATE INDEX IF NOT EXISTS idx_weekly_user ON weekly_reports(user_id);
 
+            -- 每人一份常用周报模板（套用复用）
+            CREATE TABLE IF NOT EXISTS weekly_templates (
+                user_id INTEGER PRIMARY KEY,
+                done_items TEXT NOT NULL DEFAULT '[]',
+                problems TEXT NOT NULL DEFAULT '[]',
+                solutions TEXT NOT NULL DEFAULT '[]',
+                plan_items TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
             -- 可配置角色：权限包存在 role_permissions，用户挂 roles.code
             CREATE TABLE IF NOT EXISTS roles (
                 code TEXT PRIMARY KEY,
@@ -245,5 +255,8 @@ def init_db() -> None:
 
     # 种子角色（仅首次写入，不覆盖已配置权限）
     from . import queries as _q
+    from . import weekly as _weekly
 
     _q.ensure_seed_roles()
+    # 周报周键：周一开周 → 周日开周（幂等）
+    _weekly.migrate_weekly_to_sunday_start()

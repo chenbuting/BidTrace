@@ -333,16 +333,29 @@ def empty_deposits_template_xlsx() -> bytes:
     return export_deposits_xlsx([])
 
 
-def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
-    """按「工作报表」模板样式导出单份周报（对齐郁晨杰周报 Excel）。"""
+def _safe_sheet_title(name: str, used: set[str] | None = None) -> str:
+    """Excel 工作表名：最多 31 字符，去掉非法字符，避免重名。"""
+    raw = str(name or "未命名").strip() or "未命名"
+    for ch in ("\\", "/", "?", "*", "[", "]", ":"):
+        raw = raw.replace(ch, "")
+    raw = raw[:31] or "未命名"
+    used = used if used is not None else set()
+    base = raw
+    n = 2
+    while raw in used:
+        suffix = f"_{n}"
+        raw = (base[: 31 - len(suffix)] + suffix)[:31]
+        n += 1
+    used.add(raw)
+    return raw
+
+
+def _fill_weekly_sheet(ws: Any, report: dict[str, Any]) -> None:
+    """把一份周报写入已有工作表（样式对齐手工模板）。"""
     from openpyxl.cell.rich_text import CellRichText, TextBlock
     from openpyxl.cell.text import InlineFont
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.styles.colors import Color
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
 
     # 与手工模板一致：细黑边框 + 分区浅蓝底（Office 主题色 Accent1 加亮）
     thin_side = Side(style="thin", color="FF000000")
@@ -450,7 +463,7 @@ def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
             row += 1
 
     display = str(report.get("display_name") or report.get("username") or "")
-    week_label = str(report.get("week_label") or "")
+    week_label_text = str(report.get("week_label") or "")
     done_items = report.get("done_items") or []
     plan_items = report.get("plan_items") or []
     problem_items = report.get("problem_items") or []
@@ -470,7 +483,7 @@ def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
     c_name = ws.cell(2, 1, f"制表人：{display}")
     c_name.font = font_meta
     c_name.alignment = align_left_center
-    c_time = ws.cell(2, 6, f"时间：{week_label}")
+    c_time = ws.cell(2, 6, f"时间：{week_label_text}")
     c_time.font = font_meta
     c_time.alignment = align_left_center
     paint_row(2)
@@ -497,6 +510,32 @@ def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
     row += 1
     write_items(plan_items, empty_height=58.0, item_base=58.0)
 
+
+def export_weekly_report_xlsx(report: dict[str, Any]) -> bytes:
+    """按「工作报表」模板样式导出单份周报。"""
+    wb = Workbook()
+    ws = wb.active
+    name = str(report.get("display_name") or report.get("username") or "周报")
+    ws.title = _safe_sheet_title(name)
+    _fill_weekly_sheet(ws, report)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def export_weekly_team_xlsx(reports: list[dict[str, Any]]) -> bytes:
+    """合并多份已交周报：每人一个工作表（表名=姓名）。"""
+    if not reports:
+        raise ValueError("本周暂无已提交周报")
+    wb = Workbook()
+    # 先删掉默认空表，按人重建
+    default = wb.active
+    wb.remove(default)
+    used: set[str] = set()
+    for report in reports:
+        name = str(report.get("display_name") or report.get("username") or "未命名")
+        ws = wb.create_sheet(title=_safe_sheet_title(name, used))
+        _fill_weekly_sheet(ws, report)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

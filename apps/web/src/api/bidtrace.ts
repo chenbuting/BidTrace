@@ -842,6 +842,71 @@ export async function reopenWeeklyReport(id: number) {
 
 export async function exportWeeklyReport(id: number) {
   const res = await fetch(`/api/weekly/reports/${id}/export`, { credentials: "same-origin" });
-  if (!res.ok) throw new Error("导出失败");
+  if (!res.ok) {
+    let msg = "导出失败";
+    try {
+      const j = await res.json();
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
   return res.blob();
+}
+
+/** 组长：合并导出指定周已提交周报 */
+export async function exportWeeklyTeam(week_start = "") {
+  const qs = week_start ? `?week_start=${encodeURIComponent(week_start)}` : "";
+  const res = await fetch(`/api/weekly/export-team${qs}`, { credentials: "same-origin" });
+  if (!res.ok) {
+    let msg = "合并导出失败";
+    try {
+      const j = await res.json();
+      if (j?.detail) msg = String(j.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.blob();
+}
+
+export type WeeklyContentPack = {
+  done_items: WeeklyItem[];
+  problem_items: WeeklyItem[];
+  solution_items: WeeklyItem[];
+  plan_items: WeeklyItem[];
+  has_template?: boolean;
+  found?: boolean;
+  source_week_start?: string;
+  source_week_end?: string;
+  updated_at?: string;
+};
+
+/** 读取个人常用模板 */
+export async function fetchWeeklyTemplate() {
+  return api<WeeklyContentPack>("/api/weekly/template");
+}
+
+/** 把当前内容存为常用模板 */
+export async function saveWeeklyTemplate(body: {
+  done_items: WeeklyItem[];
+  problem_items: WeeklyItem[];
+  solution_items: WeeklyItem[];
+  plan_items: WeeklyItem[];
+}) {
+  return api<WeeklyContentPack>("/api/weekly/template", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** 取上一周内容（不建草稿）；userId 可指定周报所属人 */
+export async function fetchPrevWeekContent(week_start = "", userId?: number) {
+  const qs = new URLSearchParams();
+  if (week_start) qs.set("week_start", week_start);
+  if (userId) qs.set("user_id", String(userId));
+  const q = qs.toString();
+  return api<WeeklyContentPack>(`/api/weekly/prev-week-content${q ? `?${q}` : ""}`);
 }

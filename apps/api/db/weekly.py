@@ -15,25 +15,30 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 
 def week_bounds(ref: Optional[date] = None) -> tuple[date, date]:
-    """自然周：周一到周日。"""
+    """工作周：周日到周六。"""
     d = ref or date.today()
-    start = d - timedelta(days=d.weekday())
+    # weekday: 周一=0 … 周日=6 → 回退到本周日
+    start = d - timedelta(days=(d.weekday() + 1) % 7)
     end = start + timedelta(days=6)
     return start, end
 
 
 def week_label(start: date, end: date) -> str:
-    """展示用：20260726-0801。"""
+    """展示用：20260809-0815。"""
     return f"{start.strftime('%Y%m%d')}-{end.strftime('%m%d')}"
 
 
 def parse_week_start(raw: str) -> date:
+    """解析日期，并归一到该日所在周的周日。"""
     s = (raw or "").strip()
     if len(s) >= 10 and s[4] == "-" and s[7] == "-":
-        return date.fromisoformat(s[:10])
-    if len(s) == 8 and s.isdigit():
-        return date(int(s[0:4]), int(s[4:6]), int(s[6:8]))
-    raise ValueError("week_start 格式应为 YYYY-MM-DD")
+        d = date.fromisoformat(s[:10])
+    elif len(s) == 8 and s.isdigit():
+        d = date(int(s[0:4]), int(s[4:6]), int(s[6:8]))
+    else:
+        raise ValueError("week_start 格式应为 YYYY-MM-DD")
+    start, _ = week_bounds(d)
+    return start
 
 
 def _loads_items(raw: Any) -> list[dict[str, str]]:
@@ -319,3 +324,199 @@ def week_submission_stats(week_start: str) -> dict[str, Any]:
         },
         "items": items,
     }
+
+
+def list_submitted_reports_for_week(week_start: str) -> list[dict[str, Any]]:
+    """指定周已提交周报（用于组长合并导出；不含草稿/其他周）。"""
+    start = parse_week_start(week_start)
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM weekly_reports
+            WHERE week_start = ? AND status = 'submitted'
+            ORDER BY display_name ASC, username ASC, id ASC
+            """,
+            (start.isoformat(),),
+        ).fetchall()
+        return [_public(_row_to_dict(r)) for r in rows]
+    finally:
+        conn.close()
+
+
+def empty_content() -> dict[str, list[dict[str, str]]]:
+    return {
+        "done_items": [],
+        "problem_items": [],
+        "solution_items": [],
+        "plan_items": [],
+    }
+
+
+def content_from_report(item: Optional[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    if not item:
+        return empty_content()
+    return {
+        "done_items": list(item.get("done_items") or []),
+        "problem_items": list(item.get("problem_items") or []),
+        "solution_items": list(item.get("solution_items") or []),
+        "plan_items": list(item.get("plan_items") or []),
+    }
+
+
+def content_nonempty(content: dict[str, Any]) -> bool:
+    for key in ("done_items", "problem_items", "solution_items", "plan_items"):
+        if content.get(key):
+            return True
+    return False
+
+
+def get_template(user_id: int) -> dict[str, Any]:
+    """读取个人常用模板；没有则返回空。"""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM weekly_templates WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        out = empty_content()
+        out["has_template"] = False
+        return out
+    raw = _row_to_dict(row)
+    out = {
+        "done_items": _loads_items(raw.get("done_items")),
+        "problem_items": _loads_items(raw.get("problems")),
+        "solution_items": _loads_items(raw.get("solutions")),
+        "plan_items": _loads_items(raw.get("plan_items")),
+        "updated_at": raw.get("updated_at"),
+    }
+    out["has_template"] = content_nonempty(out)
+    return out
+
+
+def save_template(user_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    """覆盖保存个人常用模板。"""
+    done = _dumps_items(data.get("done_items"))
+    problems = _dumps_items(data.get("problem_items"))
+    solutions = _dumps_items(data.get("solution_items"))
+    plans = _dumps_items(data.get("plan_items"))
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO weekly_templates (
+              user_id, done_items, problems, solutions, plan_items, updated_at
+            ) VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+            ON CONFLICT(user_id) DO UPDATE SET
+              done_items = excluded.done_items,
+              problems = excluded.problems,
+              solutions = excluded.solutions,
+              plan_items = excluded.plan_items,
+              updated_at = datetime('now','localtime')
+            """,
+            (user_id, done, problems, solutions, plans),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_template(user_id)
+
+
+def get_prev_week_content(user_id: int, week_start: str) -> dict[str, Any]:
+    """取指定周的上一周内容（不自动建草稿）。"""
+    start = parse_week_start(week_start)
+    prev = (start - timedelta(days=7)).isoformat()
+    item = get_user_week_report(user_id, prev)
+    content = content_from_report(item)
+    return {
+        **content,
+        "source_week_start": prev,
+        "source_week_end": (start - timedelta(days=1)).isoformat(),
+        "found": bool(item) and content_nonempty(content),
+        "user_id": user_id,
+    }
+
+
+def migrate_weekly_to_sunday_start() -> int:
+    """一次性：旧「周一～周日」周键改为「周日～周六」。
+
+    旧周一开周 → 前移一天到周日；若与已有周日记录冲突，保留内容更完整/已提交的那份。
+    """
+    conn = get_conn()
+    changed = 0
+    try:
+        rows = [dict(r) for r in conn.execute("SELECT * FROM weekly_reports").fetchall()]
+        for row in rows:
+            try:
+                old_start = date.fromisoformat(str(row["week_start"])[:10])
+            except ValueError:
+                continue
+            # 已是周日则跳过
+            if old_start.weekday() == 6:
+                continue
+            # 旧周一开周：周一(0) → 周日 = 周一 - 1 天；其他异常键统一归一
+            if old_start.weekday() == 0:
+                new_start = old_start - timedelta(days=1)
+            else:
+                new_start, _ = week_bounds(old_start)
+            if new_start == old_start:
+                continue
+            new_end = new_start + timedelta(days=6)
+            uid = int(row["user_id"])
+            rid = int(row["id"])
+            conflict = conn.execute(
+                "SELECT * FROM weekly_reports WHERE user_id = ? AND week_start = ? AND id != ?",
+                (uid, new_start.isoformat(), rid),
+            ).fetchone()
+            if conflict is None:
+                conn.execute(
+                    """
+                    UPDATE weekly_reports
+                    SET week_start = ?, week_end = ?,
+                        updated_at = datetime('now','localtime')
+                    WHERE id = ?
+                    """,
+                    (new_start.isoformat(), new_end.isoformat(), rid),
+                )
+                changed += 1
+                continue
+
+            def score(r: Any) -> tuple[int, str]:
+                st = 2 if str(r["status"] or "") == "submitted" else 1
+                # 有正文再加分
+                blob = " ".join(
+                    [
+                        str(r["done_items"] or ""),
+                        str(r["problems"] or ""),
+                        str(r["solutions"] or ""),
+                        str(r["plan_items"] or ""),
+                    ]
+                )
+                if blob.replace("[]", "").strip():
+                    st += 1
+                return (st, str(r["updated_at"] or ""))
+
+            if score(row) > score(conflict):
+                conn.execute("DELETE FROM weekly_reports WHERE id = ?", (int(conflict["id"]),))
+                conn.execute(
+                    """
+                    UPDATE weekly_reports
+                    SET week_start = ?, week_end = ?,
+                        updated_at = datetime('now','localtime')
+                    WHERE id = ?
+                    """,
+                    (new_start.isoformat(), new_end.isoformat(), rid),
+                )
+            else:
+                conn.execute("DELETE FROM weekly_reports WHERE id = ?", (rid,))
+            changed += 1
+        if changed:
+            conn.commit()
+    finally:
+        conn.close()
+    return changed
+

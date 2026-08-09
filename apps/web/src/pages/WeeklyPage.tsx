@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Download, Plus, RefreshCw, Save, Send, Trash2, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, FileStack, Plus, RefreshCw, Save, Send, Trash2, Undo2 } from "lucide-react";
 
 import { ApiError } from "@/api/client";
 import {
   downloadBlob,
   exportWeeklyReport,
+  exportWeeklyTeam,
   fetchMyWeekly,
+  fetchPrevWeekContent,
   fetchWeeklyMeta,
   fetchWeeklyReport,
   fetchWeeklyStats,
+  fetchWeeklyTemplate,
   reopenWeeklyReport,
   saveWeeklyReport,
+  saveWeeklyTemplate,
   submitWeeklyReport,
   type UserInfo,
   type WeeklyItem,
@@ -26,6 +30,61 @@ import { can, cn } from "@/lib/utils";
 
 function emptyItem(): WeeklyItem {
   return { title: "", body: "" };
+}
+
+/** 本地日期转 YYYY-MM-DD */
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** 取某日所在工作周周日（周日～周六） */
+function sundayOf(ref: Date = new Date()): Date {
+  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+/** 展示：8月3日～8月9日（跨年带年份） */
+function formatWeekRangeCn(weekStart: string, weekEnd: string): string {
+  if (!weekStart || !weekEnd) return "—";
+  const s = parseIsoDate(weekStart);
+  const e = parseIsoDate(weekEnd);
+  const sameYear = s.getFullYear() === e.getFullYear();
+  const left = sameYear
+    ? `${s.getMonth() + 1}月${s.getDate()}日`
+    : `${s.getFullYear()}年${s.getMonth() + 1}月${s.getDate()}日`;
+  const right = sameYear
+    ? `${e.getMonth() + 1}月${e.getDate()}日`
+    : `${e.getFullYear()}年${e.getMonth() + 1}月${e.getDate()}日`;
+  const yearPrefix = sameYear ? `${s.getFullYear()}年` : "";
+  return `${yearPrefix}${left}～${right}`;
+}
+
+function reportHasContent(r: WeeklyReport): boolean {
+  return Boolean(
+    (r.done_items && r.done_items.length) ||
+      (r.problem_items && r.problem_items.length) ||
+      (r.solution_items && r.solution_items.length) ||
+      (r.plan_items && r.plan_items.length),
+  );
+}
+
+function cloneItems(items: WeeklyItem[] | undefined): WeeklyItem[] {
+  return (items || []).map((it) => ({ title: it.title || "", body: it.body || "" }));
 }
 
 function statusLabel(s: string) {
@@ -201,10 +260,22 @@ export function WeeklyPage() {
     else await loadStats(ws);
   };
 
+  const thisWeekStart = toIsoDate(sundayOf());
+  const weekEndShown = meta?.week_end || (weekStart ? toIsoDate(addDays(parseIsoDate(weekStart), 6)) : "");
+  const isThisWeek = weekStart === thisWeekStart;
+
+  const shiftWeek = (delta: number) => {
+    const base = weekStart ? parseIsoDate(weekStart) : sundayOf();
+    const next = toIsoDate(addDays(sundayOf(base), delta * 7));
+    void onWeekChange(next);
+  };
+
   const editable =
     !!report &&
     (report.status !== "submitted" || canEditOthers) &&
     ((report.user_id === user?.id && canEditOwn) || (report.user_id !== user?.id && canEditOthers));
+
+  const isOwnReport = !!report && !!user && report.user_id === user.id;
 
   const onSave = async () => {
     if (!report) return;
@@ -270,8 +341,103 @@ export function WeeklyPage() {
     try {
       const blob = await exportWeeklyReport(id);
       downloadBlob(blob, `周报-${label}.xlsx`);
-    } catch {
-      setError("导出失败");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出失败");
+    }
+  };
+
+  const onExportTeam = async () => {
+    setError("");
+    setMsg("");
+    try {
+      const blob = await exportWeeklyTeam(weekStart);
+      const label = stats?.week_label || weekStart || "本周";
+      downloadBlob(blob, `周报合并-${label}.xlsx`);
+      setMsg(`已合并导出本周已交 ${stats?.totals.submitted ?? ""} 份`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "合并导出失败");
+    }
+  };
+
+  const onCopyPrevWeek = async () => {
+    if (!report || !editable) return;
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      const pack = await fetchPrevWeekContent(report.week_start, report.user_id);
+      if (!pack.found) {
+        setError("上一周没有可复制的内容");
+        return;
+      }
+      if (reportHasContent(report) && !confirm("当前周已有内容，确定用上一周覆盖？")) return;
+      const data = await saveWeeklyReport(report.id, {
+        display_name: report.display_name,
+        done_items: cloneItems(pack.done_items),
+        problem_items: cloneItems(pack.problem_items),
+        solution_items: cloneItems(pack.solution_items),
+        plan_items: cloneItems(pack.plan_items),
+      });
+      setReport(data.item);
+      const range = formatWeekRangeCn(pack.source_week_start || "", pack.source_week_end || "");
+      setMsg(`已复制上一周（${range}）并保存为草稿`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "复制上一周失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveAsTemplate = async () => {
+    if (!report) return;
+    if (!reportHasContent(report)) {
+      setError("当前周没有内容，无法存为模板");
+      return;
+    }
+    if (!confirm("把当前内容存为常用模板？（会覆盖旧模板）")) return;
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      await saveWeeklyTemplate({
+        done_items: report.done_items || [],
+        problem_items: report.problem_items || [],
+        solution_items: report.solution_items || [],
+        plan_items: report.plan_items || [],
+      });
+      setMsg("已存为常用模板");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "保存模板失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onApplyTemplate = async () => {
+    if (!report || !editable) return;
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      const pack = await fetchWeeklyTemplate();
+      if (!pack.has_template) {
+        setError("还没有常用模板，请先「存为常用模板」");
+        return;
+      }
+      if (reportHasContent(report) && !confirm("当前周已有内容，确定用模板覆盖？")) return;
+      const data = await saveWeeklyReport(report.id, {
+        display_name: report.display_name,
+        done_items: cloneItems(pack.done_items),
+        problem_items: cloneItems(pack.problem_items),
+        solution_items: cloneItems(pack.solution_items),
+        plan_items: cloneItems(pack.plan_items),
+      });
+      setReport(data.item);
+      setMsg("已套用常用模板并保存为草稿");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "套用模板失败");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -300,20 +466,62 @@ export function WeeklyPage() {
         <div>
           <h1 className="text-[20px] font-semibold tracking-tight text-[#26251e]">工作周报</h1>
           <p className="mt-1 text-[13px] text-[#6b6b6b]">
-            按自然周填写「所做事项 / 所遇问题 / 解决意见 / 预期工作」，提交后组长可统计交报情况并导出 Excel
+            用「上一周 / 下一周」切换（周日～周六），填写后提交；组长可统计交报并导出 Excel
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center overflow-hidden rounded-lg border border-black/[0.12] bg-white">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="rounded-none border-r border-black/[0.08] px-2"
+              title="上一周"
+              onClick={() => shiftWeek(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              上一周
+            </Button>
+            <div className="min-w-[168px] px-3 text-center text-[13px] text-[#26251e]">
+              <span className="font-medium">{isThisWeek ? "本周" : "所选周"}</span>
+              <span className="ml-1 text-[#6b6b6b]">{formatWeekRangeCn(weekStart, weekEndShown)}</span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="rounded-none border-l border-black/[0.08] px-2"
+              title="下一周"
+              onClick={() => shiftWeek(1)}
+            >
+              下一周
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          {!isThisWeek ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => void onWeekChange(thisWeekStart)}>
+              回到本周
+            </Button>
+          ) : null}
           <select
-            className="h-9 rounded-lg border border-black/[0.12] bg-white px-2 text-[13px]"
+            className="h-9 max-w-[200px] rounded-lg border border-black/[0.12] bg-white px-2 text-[13px]"
             value={weekStart}
+            title="快速跳转到历史周"
             onChange={(e) => void onWeekChange(e.target.value)}
           >
-            {(meta?.options || []).map((o) => (
-              <option key={o.week_start} value={o.week_start}>
-                {o.week_label}（{o.week_start} ~ {o.week_end}）
-              </option>
-            ))}
+            {(meta?.options || []).map((o) => {
+              const label = formatWeekRangeCn(o.week_start, o.week_end);
+              const tag = o.week_start === thisWeekStart ? "本周 · " : "";
+              return (
+                <option key={o.week_start} value={o.week_start}>
+                  {tag}
+                  {label}
+                </option>
+              );
+            })}
+            {weekStart && !(meta?.options || []).some((o) => o.week_start === weekStart) ? (
+              <option value={weekStart}>{formatWeekRangeCn(weekStart, weekEndShown)}</option>
+            ) : null}
           </select>
           <Button
             variant="outline"
@@ -328,7 +536,14 @@ export function WeeklyPage() {
 
       {canViewAll ? (
         <div className="flex gap-2">
-          <Button size="sm" variant={tab === "mine" ? "default" : "outline"} onClick={() => setTab("mine")}>
+          <Button
+            size="sm"
+            variant={tab === "mine" ? "default" : "outline"}
+            onClick={() => {
+              setTab("mine");
+              void loadMine(weekStart);
+            }}
+          >
             填写/查看
           </Button>
           <Button
@@ -349,12 +564,26 @@ export function WeeklyPage() {
 
       {tab === "team" && canViewAll ? (
         <div className="glass-card overflow-hidden">
-          <div className="flex flex-wrap gap-3 border-b border-black/[0.06] px-4 py-3 text-[13px]">
-            <span>本周 {stats?.week_label || "—"}</span>
-            <span>应交 {stats?.totals.users ?? 0}</span>
-            <span className="text-[#067647]">已交 {stats?.totals.submitted ?? 0}</span>
-            <span className="text-[#b54708]">草稿 {stats?.totals.draft ?? 0}</span>
-            <span className="text-[#6b6b6b]">未交 {stats?.totals.missing ?? 0}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.06] px-4 py-3 text-[13px]">
+            <div className="flex flex-wrap gap-3">
+              <span>
+                {isThisWeek ? "本周" : "所选周"}{" "}
+                {formatWeekRangeCn(stats?.week_start || weekStart, stats?.week_end || weekEndShown)}
+              </span>
+              <span>应交 {stats?.totals.users ?? 0}</span>
+              <span className="text-[#067647]">已交 {stats?.totals.submitted ?? 0}</span>
+              <span className="text-[#b54708]">草稿 {stats?.totals.draft ?? 0}</span>
+              <span className="text-[#6b6b6b]">未交 {stats?.totals.missing ?? 0}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!stats?.totals.submitted}
+              onClick={() => void onExportTeam()}
+            >
+              <Download className="h-3.5 w-3.5" />
+              合并导出本周已交
+            </Button>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[13px]">
@@ -378,10 +607,14 @@ export function WeeklyPage() {
                     <td className="px-3 py-2.5 text-[#6b6b6b]">{row.submitted_at || "—"}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => void openTeamReport(row.report_id)}>
-                          查看
-                        </Button>
                         {row.report_id ? (
+                          <Button size="sm" variant="ghost" onClick={() => void openTeamReport(row.report_id)}>
+                            查看
+                          </Button>
+                        ) : (
+                          <span className="px-2 text-[12px] text-[#8a8a8a]">—</span>
+                        )}
+                        {row.status === "submitted" && row.report_id ? (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -415,17 +648,35 @@ export function WeeklyPage() {
                   <StatusTag status={report.status} />
                 </div>
                 <p className="text-[12px] text-[#6b6b6b]">
-                  时间：{report.week_label}（{report.week_start} ~ {report.week_end}）
+                  时间：{formatWeekRangeCn(report.week_start, report.week_end)}
+                  {report.week_start === thisWeekStart ? "（本周）" : ""}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {editable ? (
-                  <Button variant="outline" disabled={saving} onClick={() => void onSave()}>
-                    <Save className="h-3.5 w-3.5" />
-                    保存草稿
-                  </Button>
+                  <>
+                    <Button variant="outline" disabled={saving} onClick={() => void onCopyPrevWeek()}>
+                      <Copy className="h-3.5 w-3.5" />
+                      复制上一周
+                    </Button>
+                    {isOwnReport ? (
+                      <>
+                        <Button variant="outline" disabled={saving} onClick={() => void onApplyTemplate()}>
+                          <FileStack className="h-3.5 w-3.5" />
+                          套用模板
+                        </Button>
+                        <Button variant="outline" disabled={saving} onClick={() => void onSaveAsTemplate()}>
+                          存为常用模板
+                        </Button>
+                      </>
+                    ) : null}
+                    <Button variant="outline" disabled={saving} onClick={() => void onSave()}>
+                      <Save className="h-3.5 w-3.5" />
+                      保存草稿
+                    </Button>
+                  </>
                 ) : null}
-                {editable && report.status !== "submitted" ? (
+                {editable && isOwnReport && report.status !== "submitted" ? (
                   <Button disabled={saving} onClick={() => void onSubmit()}>
                     <Send className="h-3.5 w-3.5" />
                     提交组长
