@@ -29,6 +29,7 @@ const PERM_GROUPS: { title: string; hint: string; prefix: string }[] = [
   { title: "系统 · 角色管理", hint: "配置角色权限包；与用户账号权限分开", prefix: "system.roles" },
   { title: "系统 · 单人微调", hint: "在角色之外对单个用户加减权限", prefix: "system.permissions" },
   { title: "系统 · 审计", hint: "操作日志", prefix: "system.audit" },
+  { title: "系统 · AI 配置", hint: "全局 AI 默认（中转站/官方）；个人配置不需此权限", prefix: "system.ai_config" },
   { title: "站内通知", hint: "查看/接收、发送可分开勾选授权", prefix: "notify." },
   { title: "平台账号", hint: "", prefix: "platform." },
   { title: "询标报名", hint: "", prefix: "inquiry." },
@@ -129,10 +130,20 @@ export function UsersPage() {
   const [newRole, setNewRole] = useState({ code: "", label: "" });
   const [newRolePerms, setNewRolePerms] = useState<Set<string>>(new Set());
 
-  const roleOptions = useMemo(
-    () => roles.map((r) => ({ code: r.code, label: r.label })),
-    [roles],
-  );
+  const roleOptions = useMemo(() => {
+    const opts = roles.map((r) => ({ code: r.code, label: r.label }));
+    // 非管理员不能选/看到管理员角色
+    if (user?.role !== "admin") {
+      return opts.filter((r) => r.code !== "admin");
+    }
+    return opts;
+  }, [roles, user?.role]);
+
+  const visibleUsers = useMemo(() => {
+    if (user?.role === "admin") return items;
+    return items.filter((u) => u.username !== "admin" && u.role !== "admin");
+  }, [items, user?.role]);
+
 
   const canViewUsers = can(perms, "system.users.view");
   const canCreateUser = can(perms, "system.users.create");
@@ -388,7 +399,7 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((u) => (
+              {visibleUsers.map((u) => (
                 <tr key={u.id} className="border-b border-black/[0.04]">
                   <td className="px-3 py-2">
                     <p className="font-medium text-[#26251e]">{u.display_name}</p>

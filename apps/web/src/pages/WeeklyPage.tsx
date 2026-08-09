@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Copy, Download, FileStack, Plus, RefreshCw, Save, Send, Trash2, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, FileStack, Plus, RefreshCw, Save, Send, Sparkles, Trash2, Undo2 } from "lucide-react";
 
 import { ApiError } from "@/api/client";
 import {
+  appendWeeklyInquiryAnalysis,
   downloadBlob,
   exportWeeklyReport,
   exportWeeklyTeam,
@@ -441,6 +442,33 @@ export function WeeklyPage() {
     }
   };
 
+  const onAiAppendInquiry = async () => {
+    if (!report || !editable) return;
+    const range = formatWeekRangeCn(report.week_start, report.week_end);
+    if (
+      !confirm(
+        `将根据所选周报周期「${range}」的询标数据，按个人汇报口吻生成「所做事项」并追加（不写问题/意见，不覆盖已有内容）。继续？`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      const data = await appendWeeklyInquiryAnalysis(report.id);
+      setReport(data.item);
+      const nDone = data.appended?.done_items?.length || 0;
+      setMsg(
+        `AI 已按「${range}」追加所做事项 ${nDone} 条（询标 ${data.inquiry_total} 条）`,
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "AI 分析失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openTeamReport = async (reportId: number | null) => {
     if (!reportId) {
       setError("该同事本周尚未创建周报");
@@ -655,6 +683,10 @@ export function WeeklyPage() {
               <div className="flex flex-wrap gap-2">
                 {editable ? (
                   <>
+                    <Button variant="outline" disabled={saving} onClick={() => void onAiAppendInquiry()}>
+                      <Sparkles className="h-3.5 w-3.5" />
+                      AI 填入询标分析
+                    </Button>
                     <Button variant="outline" disabled={saving} onClick={() => void onCopyPrevWeek()}>
                       <Copy className="h-3.5 w-3.5" />
                       复制上一周

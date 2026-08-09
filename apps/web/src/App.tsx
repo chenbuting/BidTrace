@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { AiSettingsPage } from "@/pages/AiSettingsPage";
 import { AppLayout } from "@/pages/AppLayout";
 import { AuditPage } from "@/pages/AuditPage";
 import { BidProjectsPage } from "@/pages/BidProjectsPage";
@@ -29,6 +30,7 @@ export function App() {
         <Route path="inquiries" element={<InquiriesPage />} />
         <Route path="weekly" element={<WeeklyPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="ai-settings" element={<AiSettingsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>

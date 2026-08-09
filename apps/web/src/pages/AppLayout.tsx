@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import {
   BarChart3,
   Bell,
+  Bot,
   CalendarDays,
   ClipboardList,
   FileText,
@@ -39,6 +40,7 @@ const NAV = [
   { to: "/inquiries", label: "询标报名", icon: ClipboardList, perm: "inquiry.view_all|inquiry.view_own" },
   { to: "/weekly", label: "工作周报", icon: FileText, perm: "weekly.view_all|weekly.view_own" },
   { to: "/notifications", label: "站内通知", icon: Bell, perm: "notify.view" },
+  { to: "/ai-settings", label: "AI 设置", icon: Bot, perm: null as string | null },
   { to: "/users", label: "用户权限", icon: Users, perm: "system.users.view|system.roles|system.permissions" },
   { to: "/audit", label: "操作日志", icon: ScrollText, perm: "system.audit" },
 ];

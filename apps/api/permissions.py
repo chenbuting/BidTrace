@@ -53,6 +53,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     "system.roles": "角色管理（新建/配置权限包/删除角色）",
     "system.permissions": "单人权限微调（在角色之外加减权限）",
     "system.audit": "查看操作日志",
+    # AI 配置
+    "system.ai_config": "配置全局 AI（中转站/官方）默认参数",
     # 站内通知
     "notify.view": "查看/接收站内通知",
     "notify.send": "发送站内通知",

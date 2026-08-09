@@ -910,3 +910,96 @@ export async function fetchPrevWeekContent(week_start = "", userId?: number) {
   const q = qs.toString();
   return api<WeeklyContentPack>(`/api/weekly/prev-week-content${q ? `?${q}` : ""}`);
 }
+
+export type AiSettings = {
+  scope: string;
+  owner_id: number;
+  enabled: boolean;
+  base_url: string;
+  api_key: string;
+  api_key_masked: string;
+  has_api_key: boolean;
+  model: string;
+  timeout_sec: number;
+  updated_at?: string | null;
+};
+
+export type AiEffective = {
+  ok: boolean;
+  source?: string | null;
+  message?: string;
+  model?: string;
+  base_url?: string;
+  can_edit_system?: boolean;
+};
+
+export async function fetchAiStatus() {
+  return api<AiEffective>("/api/ai/status");
+}
+
+export async function fetchSystemAiSettings() {
+  return api<{ item: AiSettings }>("/api/ai/settings/system");
+}
+
+export async function saveSystemAiSettings(body: {
+  enabled: boolean;
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_sec: number;
+}) {
+  return api<{ item: AiSettings }>("/api/ai/settings/system", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchMyAiSettings() {
+  return api<{ item: AiSettings; effective: AiEffective }>("/api/ai/settings/me");
+}
+
+export async function saveMyAiSettings(body: {
+  enabled: boolean;
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_sec: number;
+}) {
+  return api<{ item: AiSettings }>("/api/ai/settings/me", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function clearMyAiSettings() {
+  return api<{ item: AiSettings }>("/api/ai/settings/me", { method: "DELETE" });
+}
+
+export async function testAiSettings(body: {
+  enabled?: boolean;
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_sec: number;
+}) {
+  return api<{ ok: boolean; reply: string }>("/api/ai/test", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** 周报：AI 分析本周询标并追加（不覆盖） */
+export async function appendWeeklyInquiryAnalysis(id: number) {
+  return api<{
+    item: WeeklyReport;
+    appended: {
+      done_items: WeeklyItem[];
+      problem_items: WeeklyItem[];
+      solution_items?: WeeklyItem[];
+    };
+    inquiry_total: number;
+    ai_source?: string;
+    period?: string;
+  }>(`/api/ai/weekly/${id}/append-inquiry-analysis`, { method: "POST" });
+}
+

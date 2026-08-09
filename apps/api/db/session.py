@@ -211,6 +211,19 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             );
 
+            -- AI：全局(system/0) + 个人(user/<id>)，OpenAI 兼容中转站/官方
+            CREATE TABLE IF NOT EXISTS ai_settings (
+                scope TEXT NOT NULL,
+                owner_id INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                timeout_sec INTEGER NOT NULL DEFAULT 60,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                PRIMARY KEY (scope, owner_id)
+            );
+
             -- 可配置角色：权限包存在 role_permissions，用户挂 roles.code
             CREATE TABLE IF NOT EXISTS roles (
                 code TEXT PRIMARY KEY,

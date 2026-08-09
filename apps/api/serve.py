@@ -51,6 +51,7 @@ from permissions import (  # noqa: E402
 )
 from stats_routes import mount_stats_routes  # noqa: E402
 from weekly_routes import mount_weekly_routes  # noqa: E402
+from ai_routes import mount_ai_routes  # noqa: E402
 
 WEB_DIST = API_ROOT.parent / "web" / "dist"
 
@@ -144,6 +145,7 @@ mount_weekly_routes(
         "require_any_perm": require_any_perm,
     },
 )
+mount_ai_routes(app, {"require_login": require_login, "require_perm": require_perm})
 
 
 def mask_platform(row: dict[str, Any], perms: set[str]) -> dict[str, Any]:
@@ -386,8 +388,14 @@ def api_delete_role(
 
 @app.get("/api/users")
 def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users.view"))) -> dict[str, Any]:
+    actor_is_admin = str(user.get("role") or "") == "admin"
     items = []
     for u in q.list_users():
+        # 非管理员看不到内置 admin / 管理员角色账号
+        if not actor_is_admin and (
+            str(u.get("username") or "") == "admin" or str(u.get("role") or "") == "admin"
+        ):
+            continue
         overrides = q.get_permission_overrides(int(u["id"]))
         perms = resolve_permissions(str(u["role"]), overrides)
         items.append(
@@ -401,6 +409,14 @@ def api_list_users(user: dict[str, Any] = Depends(require_perm("system.users.vie
     return {"items": items}
 
 
+def _deny_manage_admin_account(actor: dict[str, Any], target: dict[str, Any]) -> None:
+    """非管理员不能改/删管理员账号。"""
+    if str(actor.get("role") or "") == "admin":
+        return
+    if str(target.get("username") or "") == "admin" or str(target.get("role") or "") == "admin":
+        raise HTTPException(status_code=403, detail="无权管理管理员账号")
+
+
 @app.post("/api/users")
 def api_create_user(
     body: UserCreateBody,
@@ -408,6 +424,8 @@ def api_create_user(
 ) -> dict[str, Any]:
     if not q.role_exists(body.role):
         raise HTTPException(status_code=400, detail="无效角色")
+    if str(user.get("role") or "") != "admin" and body.role == "admin":
+        raise HTTPException(status_code=403, detail="无权创建管理员账号")
     if q.get_user_by_username(body.username.strip()):
         raise HTTPException(status_code=400, detail="用户名已存在")
     created = q.create_user(body.username.strip(), body.password, body.display_name.strip(), body.role)
@@ -424,8 +442,11 @@ def api_update_user(
     target = q.get_user_by_id(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
+    _deny_manage_admin_account(user, target)
     if body.role is not None and not q.role_exists(body.role):
         raise HTTPException(status_code=400, detail="无效角色")
+    if str(user.get("role") or "") != "admin" and body.role == "admin":
+        raise HTTPException(status_code=403, detail="无权将用户设为管理员")
     # 内置 admin 账号不允许改角色，避免锁死系统
     if body.role is not None and str(target.get("username")) == "admin":
         raise HTTPException(status_code=400, detail="内置管理员账号不能改角色")
@@ -499,6 +520,10 @@ def api_delete_user(
 ) -> dict[str, Any]:
     if int(user_id) == int(user["id"]):
         raise HTTPException(status_code=400, detail="不能删除当前登录账号")
+    target = q.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    _deny_manage_admin_account(user, target)
     result = q.delete_user(user_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("message") or "删除失败")
@@ -521,6 +546,7 @@ def api_set_user_perms(
     target = q.get_user_by_id(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
+    _deny_manage_admin_account(user, target)
     if str(target["role"]) == "admin":
         raise HTTPException(status_code=400, detail="管理员权限不可覆盖")
     clean = {k: bool(v) for k, v in body.overrides.items() if k in ALL_PERMISSIONS}
