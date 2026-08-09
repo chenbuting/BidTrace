@@ -25,6 +25,7 @@ import {
   type WeeklyStats,
 } from "@/api/bidtrace";
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { can, cn } from "@/lib/utils";
@@ -203,6 +204,7 @@ export function WeeklyPage() {
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirmDialog();
 
   const loadMeta = async (ws = weekStart) => {
     const data = await fetchWeeklyMeta(ws);
@@ -302,7 +304,12 @@ export function WeeklyPage() {
 
   const onSubmit = async () => {
     if (!report) return;
-    if (!confirm("提交后将交给组长统计，确定提交？")) return;
+    const ok = await askConfirm({
+      title: "提交周报",
+      description: "提交后将交给组长统计，确定提交？",
+      confirmLabel: "提交",
+    });
+    if (!ok) return;
     setSaving(true);
     setError("");
     setMsg("");
@@ -327,7 +334,12 @@ export function WeeklyPage() {
 
   const onReopen = async () => {
     if (!report) return;
-    if (!confirm("确定退回为草稿以便继续修改？")) return;
+    const ok = await askConfirm({
+      title: "退回草稿",
+      description: "确定退回为草稿以便继续修改？",
+      confirmLabel: "退回草稿",
+    });
+    if (!ok) return;
     try {
       const data = await reopenWeeklyReport(report.id);
       setReport(data.item);
@@ -371,7 +383,15 @@ export function WeeklyPage() {
         setError("上一周没有可复制的内容");
         return;
       }
-      if (reportHasContent(report) && !confirm("当前周已有内容，确定用上一周覆盖？")) return;
+      if (reportHasContent(report)) {
+        const ok = await askConfirm({
+          title: "覆盖当前内容",
+          description: "当前周已有内容，确定用上一周覆盖？",
+          confirmLabel: "覆盖",
+          danger: true,
+        });
+        if (!ok) return;
+      }
       const data = await saveWeeklyReport(report.id, {
         display_name: report.display_name,
         done_items: cloneItems(pack.done_items),
@@ -395,7 +415,12 @@ export function WeeklyPage() {
       setError("当前周没有内容，无法存为模板");
       return;
     }
-    if (!confirm("把当前内容存为常用模板？（会覆盖旧模板）")) return;
+    const ok = await askConfirm({
+      title: "存为常用模板",
+      description: "把当前内容存为常用模板？（会覆盖旧模板）",
+      confirmLabel: "保存模板",
+    });
+    if (!ok) return;
     setSaving(true);
     setError("");
     setMsg("");
@@ -425,7 +450,15 @@ export function WeeklyPage() {
         setError("还没有常用模板，请先「存为常用模板」");
         return;
       }
-      if (reportHasContent(report) && !confirm("当前周已有内容，确定用模板覆盖？")) return;
+      if (reportHasContent(report)) {
+        const ok = await askConfirm({
+          title: "覆盖当前内容",
+          description: "当前周已有内容，确定用模板覆盖？",
+          confirmLabel: "覆盖",
+          danger: true,
+        });
+        if (!ok) return;
+      }
       const data = await saveWeeklyReport(report.id, {
         display_name: report.display_name,
         done_items: cloneItems(pack.done_items),
@@ -445,13 +478,18 @@ export function WeeklyPage() {
   const onAiAppendInquiry = async () => {
     if (!report || !editable) return;
     const range = formatWeekRangeCn(report.week_start, report.week_end);
-    if (
-      !confirm(
-        `将根据所选周报周期「${range}」的询标数据，按个人汇报口吻生成「所做事项」并追加（不写问题/意见，不覆盖已有内容）。继续？`,
-      )
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "AI 填入询标分析",
+      description: (
+        <>
+          将根据所选周报周期「{range}」的询标数据，按个人汇报口吻生成「所做事项」并追加。
+          <br />
+          不写问题/意见，不覆盖已有内容。是否继续？
+        </>
+      ),
+      confirmLabel: "开始生成",
+    });
+    if (!ok) return;
     setSaving(true);
     setError("");
     setMsg("");
@@ -490,6 +528,7 @@ export function WeeklyPage() {
 
   return (
     <div className="space-y-4 p-5 md:p-6">
+      {confirmDialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[20px] font-semibold tracking-tight text-[#26251e]">工作周报</h1>
