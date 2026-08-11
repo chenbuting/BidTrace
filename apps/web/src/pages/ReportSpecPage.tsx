@@ -1,15 +1,30 @@
-import { useRef, useState } from "react";
-import { FileSpreadsheet, Loader2, Sparkles, Upload } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { Download, FileSpreadsheet, Loader2, Sparkles, Upload } from "lucide-react";
 
 import { ApiError } from "@/api/client";
 import {
+  downloadBlob,
+  exportReportSpecRef,
   generateReportSpecRef,
-  type ReportSpecRefItem,
+  type ReportSpecPack,
 } from "@/api/bidtrace";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-/** 检验报告规格修改参考：上传模板 + 目标规格 → AI 参考表 */
+function emptyPack(): ReportSpecPack {
+  return {
+    summary: "",
+    warnings: [],
+    matches: [],
+    changes: [],
+    test_items: [],
+    key_params: [],
+    steps: [],
+    items: [],
+  };
+}
+
+/** 检验报告规格修改参考：上传模板 + 目标规格 → 修改说明/检验项目/可导出Excel */
 export function ReportSpecPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -17,10 +32,9 @@ export function ReportSpecPage() {
     "ZC-YGG-0.6/1KV 3*120+2*70\nZC-KGGP-750V 10*1.5",
   );
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState("");
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [items, setItems] = useState<ReportSpecRefItem[]>([]);
+  const [pack, setPack] = useState<ReportSpecPack | null>(null);
 
   const onPick = (f: File | null) => {
     setFile(f);
@@ -38,20 +52,39 @@ export function ReportSpecPage() {
     }
     setLoading(true);
     setError("");
-    setSummary("");
-    setWarnings([]);
-    setItems([]);
+    setPack(null);
     try {
       const data = await generateReportSpecRef(file, specs.trim());
-      setSummary(data.summary || "");
-      setWarnings(data.warnings || []);
-      setItems(data.items || []);
+      setPack({ ...emptyPack(), ...data });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "生成失败");
     } finally {
       setLoading(false);
     }
   };
+
+  const onExport = async () => {
+    if (!pack) return;
+    setExporting(true);
+    setError("");
+    try {
+      const blob = await exportReportSpecRef(pack);
+      downloadBlob(blob, "报告规格修改参考.xlsx");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const hasResult =
+    !!pack &&
+    (!!pack.summary ||
+      pack.matches.length > 0 ||
+      pack.changes.length > 0 ||
+      pack.test_items.length > 0 ||
+      pack.key_params.length > 0 ||
+      pack.steps.length > 0);
 
   return (
     <div className="space-y-4 p-5 md:p-6">
@@ -60,7 +93,8 @@ export function ReportSpecPage() {
           报告规格辅助
         </h1>
         <p className="mt-1 text-[13px] text-[#6b6b6b]">
-          上传上缆所类检验报告 Word（.docx），填写目标规格，AI 给出字段/数值修改参考表。文件仅用于本次分析，不会保存在服务器。
+          上传上缆所类检验报告 Word（.docx），填写目标规格，生成「套用样例 + 修改说明 + 检验项目草稿」，并可导出
+          Excel。文件仅用于本次分析，不会保存在服务器。
         </p>
       </div>
 
@@ -102,73 +136,191 @@ export function ReportSpecPage() {
 
         {error ? <p className="text-[13px] text-red-600">{error}</p> : null}
 
-        <Button disabled={loading} onClick={() => void onGenerate()}>
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
-          )}
-          {loading ? "生成中…" : "生成参考表"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={loading} onClick={() => void onGenerate()}>
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {loading ? "生成中（可能需1～3分钟）…" : "生成参考包"}
+          </Button>
+          {hasResult ? (
+            <Button
+              variant="outline"
+              disabled={exporting}
+              onClick={() => void onExport()}
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              导出 Excel
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      {summary || items.length > 0 ? (
-        <div className="space-y-3">
-          {summary ? (
+      {hasResult && pack ? (
+        <div className="space-y-5">
+          {pack.summary ? (
             <p className="flex items-start gap-2 text-[13px] text-[#26251e]">
               <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-[#f54e00]" />
-              <span>{summary}</span>
+              <span>{pack.summary}</span>
             </p>
           ) : null}
 
-          {warnings.length > 0 ? (
+          {pack.warnings.length > 0 ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-              <p className="mb-1 font-medium">注意</p>
+              <p className="mb-1 font-medium">重要提醒</p>
               <ul className="list-disc space-y-0.5 pl-4">
-                {warnings.map((w, i) => (
+                {pack.warnings.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}
               </ul>
             </div>
           ) : null}
 
-          <div className="overflow-x-auto rounded-lg border border-black/[0.08]">
-            <table className="min-w-full text-left text-[12px]">
-              <thead className="bg-[#f7f7f4] text-[#6b6b6b]">
-                <tr>
-                  <th className="px-3 py-2 font-medium">报告编号</th>
-                  <th className="px-3 py-2 font-medium">字段</th>
-                  <th className="px-3 py-2 font-medium">原值</th>
-                  <th className="px-3 py-2 font-medium">建议新值</th>
-                  <th className="px-3 py-2 font-medium">说明</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((row, i) => (
-                  <tr key={i} className="border-t border-black/[0.06] align-top">
-                    <td className="px-3 py-2 whitespace-nowrap text-[#6b6b6b]">
-                      {row.report_no || "—"}
-                    </td>
-                    <td className="px-3 py-2 font-medium text-[#26251e]">{row.field || "—"}</td>
-                    <td className="px-3 py-2 max-w-[220px] break-words text-[#6b6b6b]">
-                      {row.old_value || "—"}
-                    </td>
-                    <td className="px-3 py-2 max-w-[220px] break-words text-[#067647]">
-                      {row.new_value || "—"}
-                    </td>
-                    <td className="px-3 py-2 max-w-[240px] break-words text-[#6b6b6b]">
-                      {row.note || "—"}
-                    </td>
-                  </tr>
+          {pack.matches.length > 0 ? (
+            <Section title="建议套用哪一份样例">
+              <SimpleTable
+                headers={["目标规格", "样例报告编号", "样例原规格", "原因"]}
+                rows={pack.matches.map((m) => [
+                  m.target_spec,
+                  m.base_report_no,
+                  m.base_spec,
+                  m.reason,
+                ])}
+              />
+            </Section>
+          ) : null}
+
+          {pack.changes.length > 0 ? (
+            <Section title="修改说明">
+              <SimpleTable
+                headers={["目标规格", "位置", "原内容", "建议改为", "必须改", "备注"]}
+                rows={pack.changes.map((c) => [
+                  c.target_spec,
+                  c.position,
+                  c.old_value,
+                  c.new_value,
+                  c.must_change,
+                  c.note,
+                ])}
+                highlightCol={3}
+              />
+            </Section>
+          ) : null}
+
+          {pack.test_items.length > 0 ? (
+            <Section title="检验项目表（示例草稿）">
+              <SimpleTable
+                headers={[
+                  "目标规格",
+                  "序号",
+                  "检验项目",
+                  "单位",
+                  "技术要求",
+                  "结果草稿",
+                  "评定",
+                  "说明",
+                ]}
+                rows={pack.test_items.map((t) => [
+                  t.target_spec,
+                  t.seq,
+                  t.item,
+                  t.unit,
+                  t.requirement,
+                  t.result_draft,
+                  t.rating,
+                  t.note,
+                ])}
+              />
+              <p className="mt-2 text-[11px] text-[#8a8a8a]">
+                「结果草稿」仅为格式示例，正式报告必须换成实验室实测值。
+              </p>
+            </Section>
+          ) : null}
+
+          {pack.key_params.length > 0 ? (
+            <Section title="关键参数参考">
+              <SimpleTable
+                headers={["目标规格", "项目", "常用参考值", "说明"]}
+                rows={pack.key_params.map((k) => [
+                  k.target_spec,
+                  k.param,
+                  k.ref_value,
+                  k.note,
+                ])}
+              />
+            </Section>
+          ) : null}
+
+          {pack.steps.length > 0 ? (
+            <Section title="操作步骤">
+              <ol className="list-decimal space-y-1 pl-5 text-[12px] text-[#26251e]">
+                {pack.steps.map((s, i) => (
+                  <li key={i}>{s}</li>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-[11px] text-[#8a8a8a]">
-            以上为 AI 参考，电阻/厚度等请按对应标准复核后再改正式报告。
-          </p>
+              </ol>
+            </Section>
+          ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <h2 className="text-[14px] font-semibold text-[#26251e]">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function SimpleTable({
+  headers,
+  rows,
+  highlightCol,
+}: {
+  headers: string[];
+  rows: string[][];
+  highlightCol?: number;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-black/[0.08]">
+      <table className="min-w-full text-left text-[12px]">
+        <thead className="bg-[#f7f7f4] text-[#6b6b6b]">
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-t border-black/[0.06] align-top">
+              {row.map((cell, j) => (
+                <td
+                  key={j}
+                  className={
+                    j === highlightCol
+                      ? "px-3 py-2 max-w-[240px] break-words text-[#067647]"
+                      : "px-3 py-2 max-w-[240px] break-words text-[#26251e]"
+                  }
+                >
+                  {cell || "—"}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

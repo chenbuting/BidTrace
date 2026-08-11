@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, ApiError } from "./client";
 
 export type UserInfo = {
   id: number;
@@ -1003,7 +1003,7 @@ export async function appendWeeklyInquiryAnalysis(id: number) {
   }>(`/api/ai/weekly/${id}/append-inquiry-analysis`, { method: "POST" });
 }
 
-/** 报告规格修改参考行 */
+/** 报告规格修改参考（兼容旧扁平行） */
 export type ReportSpecRefItem = {
   report_no: string;
   field: string;
@@ -1012,18 +1012,83 @@ export type ReportSpecRefItem = {
   note: string;
 };
 
-/** 上传报告模板 + 目标规格，生成修改参考表（服务端不保留文件） */
+export type ReportSpecMatch = {
+  target_spec: string;
+  base_report_no: string;
+  base_spec: string;
+  reason: string;
+};
+
+export type ReportSpecChange = {
+  target_spec: string;
+  position: string;
+  old_value: string;
+  new_value: string;
+  must_change: string;
+  note: string;
+};
+
+export type ReportSpecTestItem = {
+  target_spec: string;
+  seq: string;
+  item: string;
+  unit: string;
+  requirement: string;
+  result_draft: string;
+  rating: string;
+  note: string;
+};
+
+export type ReportSpecKeyParam = {
+  target_spec: string;
+  param: string;
+  ref_value: string;
+  note: string;
+};
+
+export type ReportSpecPack = {
+  summary: string;
+  warnings: string[];
+  matches: ReportSpecMatch[];
+  changes: ReportSpecChange[];
+  test_items: ReportSpecTestItem[];
+  key_params: ReportSpecKeyParam[];
+  steps: string[];
+  items: ReportSpecRefItem[];
+  ai_source?: string;
+  filename?: string;
+  kept_on_server?: boolean;
+};
+
+/** 上传报告模板 + 目标规格，生成完整修改参考包（服务端不保留文件） */
 export async function generateReportSpecRef(file: File, specs: string) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("specs", specs);
-  return api<{
-    summary: string;
-    items: ReportSpecRefItem[];
-    warnings: string[];
-    ai_source?: string;
-    filename?: string;
-    kept_on_server?: boolean;
-  }>("/api/ai/report-spec-ref", { method: "POST", body: fd });
+  return api<ReportSpecPack>("/api/ai/report-spec-ref", { method: "POST", body: fd });
+}
+
+/** 导出参考包为 Excel */
+export async function exportReportSpecRef(pack: ReportSpecPack) {
+  const res = await fetch("/api/ai/report-spec-ref/export", {
+    credentials: "same-origin",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      summary: pack.summary || "",
+      warnings: pack.warnings || [],
+      matches: pack.matches || [],
+      changes: pack.changes || [],
+      test_items: pack.test_items || [],
+      key_params: pack.key_params || [],
+      steps: pack.steps || [],
+      items: pack.items || [],
+    }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new ApiError(res.status, data.detail || "导出失败");
+  }
+  return res.blob();
 }
 
