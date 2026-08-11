@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from "react";
-import { Download, FileSpreadsheet, Loader2, Sparkles, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Download, FileSpreadsheet, Loader2, Sparkles, Upload } from "lucide-react";
 
 import { ApiError } from "@/api/client";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/api/bidtrace";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 function emptyPack(): ReportSpecPack {
   return {
@@ -24,7 +25,21 @@ function emptyPack(): ReportSpecPack {
   };
 }
 
-/** 检验报告规格修改参考：上传模板 + 目标规格 → 修改说明/检验项目/可导出Excel */
+const PROGRESS_STEPS = [
+  { key: "parse", label: "上传并解析 Word 模板" },
+  { key: "ai", label: "AI 识别结构并分析改法（最久）" },
+  { key: "pack", label: "整理参考包" },
+] as const;
+
+type ProgressKey = (typeof PROGRESS_STEPS)[number]["key"] | "done" | null;
+
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}分${String(s).padStart(2, "0")}秒` : `${s}秒`;
+}
+
+/** 检验报告规格修改参考：通用模板 + 目标规格 → 修改说明/检验项目/可导出Excel */
 export function ReportSpecPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -35,6 +50,15 @@ export function ReportSpecPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [pack, setPack] = useState<ReportSpecPack | null>(null);
+  const [progress, setProgress] = useState<ProgressKey>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return;
+    setElapsed(0);
+    const timer = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const onPick = (f: File | null) => {
     setFile(f);
@@ -53,10 +77,21 @@ export function ReportSpecPage() {
     setLoading(true);
     setError("");
     setPack(null);
+    setProgress("parse");
+
+    // 前端分段提示：真实耗时主要在同一次 AI 请求里
+    const toAi = window.setTimeout(() => setProgress("ai"), 900);
+
     try {
       const data = await generateReportSpecRef(file, specs.trim());
+      window.clearTimeout(toAi);
+      setProgress("pack");
+      await new Promise((r) => window.setTimeout(r, 350));
       setPack({ ...emptyPack(), ...data });
+      setProgress("done");
     } catch (e) {
+      window.clearTimeout(toAi);
+      setProgress(null);
       setError(e instanceof ApiError ? e.message : "生成失败");
     } finally {
       setLoading(false);
@@ -86,6 +121,17 @@ export function ReportSpecPage() {
       pack.key_params.length > 0 ||
       pack.steps.length > 0);
 
+  const stepStatus = (key: (typeof PROGRESS_STEPS)[number]["key"]) => {
+    if (progress === "done") return "done";
+    if (!progress) return "wait";
+    const order = PROGRESS_STEPS.map((s) => s.key);
+    const cur = order.indexOf(progress === "pack" ? "pack" : progress);
+    const idx = order.indexOf(key);
+    if (idx < cur) return "done";
+    if (idx === cur) return "active";
+    return "wait";
+  };
+
   return (
     <div className="space-y-4 p-5 md:p-6">
       <div>
@@ -93,14 +139,15 @@ export function ReportSpecPage() {
           报告规格辅助
         </h1>
         <p className="mt-1 text-[13px] text-[#6b6b6b]">
-          上传上缆所类检验报告 Word（.docx），填写目标规格，生成「套用样例 + 修改说明 + 检验项目草稿」，并可导出
-          Excel。文件仅用于本次分析，不会保存在服务器。
+          上传任意结构相近的检验报告 Word（.docx），填写目标规格。AI
+          先识别模板结构，再按「套用样例 / 修改说明 / 检验项目草稿」方向灵活生成参考包，并可导出
+          Excel。文件不落库。
         </p>
       </div>
 
       <div className="glass-card max-w-3xl space-y-4 p-4">
         <div className="space-y-1">
-          <Label>报告模板（.docx）</Label>
+          <Label>报告模板（.docx，尽量通用）</Label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               ref={inputRef}
@@ -143,12 +190,12 @@ export function ReportSpecPage() {
             ) : (
               <Sparkles className="h-3.5 w-3.5" />
             )}
-            {loading ? "生成中（可能需1～3分钟）…" : "生成参考包"}
+            {loading ? "生成中…" : "生成参考包"}
           </Button>
           {hasResult ? (
             <Button
               variant="outline"
-              disabled={exporting}
+              disabled={exporting || loading}
               onClick={() => void onExport()}
             >
               {exporting ? (
@@ -160,6 +207,54 @@ export function ReportSpecPage() {
             </Button>
           ) : null}
         </div>
+
+        {loading || progress === "done" ? (
+          <div className="rounded-md border border-black/[0.08] bg-[#fafaf8] px-3 py-3">
+            <div className="mb-2 flex items-center justify-between text-[12px] text-[#6b6b6b]">
+              <span>{loading ? "正在处理" : "已完成"}</span>
+              <span>已用时 {formatElapsed(elapsed)}</span>
+            </div>
+            <ul className="space-y-2">
+              {PROGRESS_STEPS.map((s) => {
+                const st = stepStatus(s.key);
+                return (
+                  <li key={s.key} className="flex items-center gap-2 text-[13px]">
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
+                        st === "done" && "border-[#067647] bg-[#ecfdf3] text-[#067647]",
+                        st === "active" && "border-[#f54e00] bg-[#fff1eb] text-[#f54e00]",
+                        st === "wait" && "border-black/15 text-[#8a8a8a]",
+                      )}
+                    >
+                      {st === "done" ? (
+                        <Check className="h-3 w-3" />
+                      ) : st === "active" ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "·"
+                      )}
+                    </span>
+                    <span
+                      className={cn(
+                        st === "active" && "font-medium text-[#26251e]",
+                        st === "wait" && "text-[#8a8a8a]",
+                        st === "done" && "text-[#067647]",
+                      )}
+                    >
+                      {s.label}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {loading && progress === "ai" ? (
+              <p className="mt-2 text-[11px] text-[#8a8a8a]">
+                AI 分析通常需要 1～3 分钟，请勿关闭页面。
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {hasResult && pack ? (
@@ -238,7 +333,8 @@ export function ReportSpecPage() {
                 ])}
               />
               <p className="mt-2 text-[11px] text-[#8a8a8a]">
-                「结果草稿」仅为格式示例，正式报告必须换成实验室实测值。
+                「结果草稿」仅为格式示例，正式报告必须换成实验室实测值。导出 Excel
+                时会按规格拆成独立工作表。
               </p>
             </Section>
           ) : null}
