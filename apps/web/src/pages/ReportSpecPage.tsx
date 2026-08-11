@@ -17,6 +17,7 @@ function emptyPack(): ReportSpecPack {
     summary: "",
     warnings: [],
     matches: [],
+    relative_diffs: [],
     changes: [],
     test_items: [],
     key_params: [],
@@ -116,6 +117,7 @@ export function ReportSpecPage() {
     !!pack &&
     (!!pack.summary ||
       pack.matches.length > 0 ||
+      (pack.relative_diffs?.length || 0) > 0 ||
       pack.changes.length > 0 ||
       pack.test_items.length > 0 ||
       pack.key_params.length > 0 ||
@@ -287,6 +289,22 @@ export function ReportSpecPage() {
                   m.base_spec,
                   m.reason,
                 ])}
+              />
+            </Section>
+          ) : null}
+
+          {(pack.relative_diffs?.length || 0) > 0 ? (
+            <Section title="相对原模版改了什么（关键）">
+              <SimpleTable
+                headers={["规格", "改动点", "原样例", "现在怎么改", "原因"]}
+                rows={(pack.relative_diffs || []).map((d) => [
+                  d.target_spec,
+                  d.aspect,
+                  d.old_value,
+                  d.new_value,
+                  d.reason,
+                ])}
+                highlightCol={3}
               />
             </Section>
           ) : null}

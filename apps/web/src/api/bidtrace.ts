@@ -1046,10 +1046,19 @@ export type ReportSpecKeyParam = {
   note: string;
 };
 
+export type ReportSpecRelativeDiff = {
+  target_spec: string;
+  aspect: string;
+  old_value: string;
+  new_value: string;
+  reason: string;
+};
+
 export type ReportSpecPack = {
   summary: string;
   warnings: string[];
   matches: ReportSpecMatch[];
+  relative_diffs: ReportSpecRelativeDiff[];
   changes: ReportSpecChange[];
   test_items: ReportSpecTestItem[];
   key_params: ReportSpecKeyParam[];
@@ -1078,6 +1087,7 @@ export async function exportReportSpecRef(pack: ReportSpecPack) {
       summary: pack.summary || "",
       warnings: pack.warnings || [],
       matches: pack.matches || [],
+      relative_diffs: pack.relative_diffs || [],
       changes: pack.changes || [],
       test_items: pack.test_items || [],
       key_params: pack.key_params || [],
