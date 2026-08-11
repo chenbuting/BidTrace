@@ -3,16 +3,19 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import date
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ai_client import chat_completions, extract_json_object
 from db import ai_settings as ai
 from db import queries as q
 from db import weekly as w
+from docx_text import extract_docx_text
 from permissions import has_perm
 
 
@@ -419,6 +422,140 @@ def create_ai_router(
             "inquiry_total": total,
             "ai_source": eff.get("source"),
             "period": period_label,
+        }
+
+    @router.post("/report-spec-ref")
+    async def api_report_spec_ref(
+        specs: str = Form(..., description="目标规格自由文本"),
+        file: UploadFile = File(..., description="报告 Word 模板 .docx"),
+        user: dict[str, Any] = Depends(require_login),
+    ) -> dict[str, Any]:
+        """上传检验报告模板 + 目标规格，AI 输出修改参考表（文件用完即删，不落库）。"""
+        specs_text = (specs or "").strip()
+        if not specs_text:
+            raise HTTPException(status_code=400, detail="请填写目标规格")
+
+        filename = (file.filename or "").strip()
+        lower = filename.lower()
+        if lower.endswith(".doc") and not lower.endswith(".docx"):
+            raise HTTPException(status_code=400, detail="请先把 .doc 另存为 .docx 再上传")
+        if not lower.endswith(".docx"):
+            raise HTTPException(status_code=400, detail="仅支持 .docx 文件")
+
+        eff = ai.resolve_effective(int(user["id"]))
+        if not eff.get("ok"):
+            raise HTTPException(status_code=400, detail=str(eff.get("message") or "AI 未配置"))
+
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        if len(raw) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="文件过大（上限 20MB）")
+
+        tmp_path = ""
+        try:
+            fd, tmp_path = tempfile.mkstemp(suffix=".docx", prefix="bidtrace_spec_")
+            os.close(fd)
+            with open(tmp_path, "wb") as f:
+                f.write(raw)
+            try:
+                template_text = extract_docx_text(tmp_path)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"解析 Word 失败：{exc}") from exc
+        finally:
+            # 用完立即删除临时文件，不留在服务器
+            if tmp_path and os.path.isfile(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+        system_prompt = (
+            "你是电线电缆检验报告（上缆所类委托检验报告）改规格助手。"
+            "用户会提供一份现有报告模板全文，以及想改成的目标型号/规格（自由文本，可能多条）。"
+            "请对照模板，输出「修改参考表」：哪些字段/数值建议改成什么，供人工核对后改 Word。"
+            "必须只输出 JSON，不要 Markdown，不要解释。"
+            "格式严格为："
+            '{"summary":"一句话总览",'
+            '"items":[{"report_no":"报告编号或空","field":"字段名",'
+            '"old_value":"原文","new_value":"建议新值","note":"简短说明"}],'
+            '"warnings":["风险或不确定项"]}'
+            "要求："
+            "1) 优先覆盖：试样名称、样品型号、型号规格、检验依据/标准、检验结论、"
+            "导体直流电阻要求与实测、绝缘/护套厚度、工频电压试验等级、结构尺寸相关项；"
+            "2) 若模板含多份报告，按目标规格分别匹配最接近的一份作参照，并在 note 标明；"
+            "3) 电阻、厚度等数值若无法从规格精确算出，给出合理行业习惯范围或计算思路，"
+            "并在 note/warnings 标明「需按标准复核」，禁止装作已实测；"
+            "4) items 控制在 8～40 条，按目标规格分组；"
+            "5) 不要编造报告编号以外的委托方、日期等无关改动，除非用户规格里明确要求。"
+        )
+        user_prompt = (
+            f"【目标规格】\n{specs_text}\n\n"
+            f"【模板全文】\n{template_text}\n\n"
+            "请输出修改参考表 JSON。"
+        )
+
+        try:
+            raw_text = chat_completions(
+                base_url=str(eff["base_url"]),
+                api_key=str(eff["api_key"]),
+                model=str(eff["model"]),
+                timeout_sec=max(90, int(eff.get("timeout_sec") or 120)),
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            parsed = extract_json_object(raw_text)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"AI 生成失败：{exc}") from exc
+
+        items_out: list[dict[str, str]] = []
+        raw_items = parsed.get("items") if isinstance(parsed, dict) else None
+        if isinstance(raw_items, list):
+            for it in raw_items:
+                if not isinstance(it, dict):
+                    continue
+                field = str(it.get("field") or "").strip()
+                if not field and not str(it.get("new_value") or "").strip():
+                    continue
+                items_out.append(
+                    {
+                        "report_no": str(it.get("report_no") or "").strip(),
+                        "field": field,
+                        "old_value": str(it.get("old_value") or "").strip(),
+                        "new_value": str(it.get("new_value") or "").strip(),
+                        "note": str(it.get("note") or "").strip(),
+                    }
+                )
+
+        warnings: list[str] = []
+        raw_warn = parsed.get("warnings") if isinstance(parsed, dict) else None
+        if isinstance(raw_warn, list):
+            for witem in raw_warn:
+                s = str(witem or "").strip()
+                if s:
+                    warnings.append(s)
+
+        summary = str((parsed or {}).get("summary") or "").strip() if isinstance(parsed, dict) else ""
+        if not items_out:
+            raise HTTPException(status_code=400, detail="AI 未生成有效参考表，请重试或换更清晰的规格描述")
+
+        q.add_audit(
+            int(user["id"]),
+            user["username"],
+            "ai.report_spec_ref",
+            "ai:report_spec",
+            f"file={filename[:80]},items={len(items_out)},specs={specs_text[:120]}",
+        )
+        return {
+            "summary": summary,
+            "items": items_out,
+            "warnings": warnings,
+            "ai_source": eff.get("source"),
+            "filename": filename,
+            "kept_on_server": False,
         }
 
     return router

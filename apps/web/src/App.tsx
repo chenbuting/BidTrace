@@ -12,6 +12,7 @@ import { InquiriesPage } from "@/pages/InquiriesPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 import { PlatformsPage } from "@/pages/PlatformsPage";
+import { ReportSpecPage } from "@/pages/ReportSpecPage";
 import { UsersPage } from "@/pages/UsersPage";
 import { WeeklyPage } from "@/pages/WeeklyPage";
 
@@ -30,6 +31,7 @@ export function App() {
         <Route path="inquiries" element={<InquiriesPage />} />
         <Route path="weekly" element={<WeeklyPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="report-spec" element={<ReportSpecPage />} />
         <Route path="ai-settings" element={<AiSettingsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="audit" element={<AuditPage />} />

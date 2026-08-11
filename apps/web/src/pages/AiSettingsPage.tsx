@@ -268,6 +268,7 @@ export function AiSettingsPage() {
         <ul className="list-disc space-y-1 pl-4">
           <li>管理员在「全局默认」配置一套给大家用；成员可在「我的配置」覆盖。</li>
           <li>周报页可点「AI 填入询标分析」：按当前周询标追加到事项/问题，不覆盖已有内容。</li>
+          <li>「报告规格辅助」可上传检验报告 docx + 目标规格，生成修改参考表（文件不落库）。</li>
           <li>Key 仅保存在服务器，界面只显示脱敏。</li>
         </ul>
       </div>

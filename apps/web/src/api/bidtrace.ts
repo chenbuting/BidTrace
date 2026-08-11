@@ -1003,3 +1003,27 @@ export async function appendWeeklyInquiryAnalysis(id: number) {
   }>(`/api/ai/weekly/${id}/append-inquiry-analysis`, { method: "POST" });
 }
 
+/** 报告规格修改参考行 */
+export type ReportSpecRefItem = {
+  report_no: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+  note: string;
+};
+
+/** 上传报告模板 + 目标规格，生成修改参考表（服务端不保留文件） */
+export async function generateReportSpecRef(file: File, specs: string) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("specs", specs);
+  return api<{
+    summary: string;
+    items: ReportSpecRefItem[];
+    warnings: string[];
+    ai_source?: string;
+    filename?: string;
+    kept_on_server?: boolean;
+  }>("/api/ai/report-spec-ref", { method: "POST", body: fd });
+}
+
