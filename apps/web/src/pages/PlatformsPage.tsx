@@ -400,25 +400,25 @@ export function PlatformsPage() {
       {error ? <p className="mt-2 text-[12px] text-red-600">{error}</p> : null}
 
       {/* 表格 */}
-      <div className="glass-card mt-3 flex-1 overflow-auto">
+      <div className="glass-card mt-3 max-h-[calc(100vh-280px)] overflow-auto">
         <table className="w-full min-w-[1280px] text-left text-[12px]">
-          <thead className="sticky top-0 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+          <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
             <tr>
-              <th className="w-10 px-3 py-2.5">
+              <th className="w-10 px-2.5 py-1.5">
                 <input type="checkbox" checked={allChecked} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2.5 font-medium">平台名称</th>
-              <th className="px-3 py-2.5 font-medium">平台网址</th>
-              <th className="px-3 py-2.5 font-medium">登录方式</th>
-              <th className="px-3 py-2.5 font-medium">登录账号</th>
-              <th className="px-3 py-2.5 font-medium">登录密码</th>
-              <th className="px-3 py-2.5 font-medium">是否有CA证书</th>
-              <th className="px-3 py-2.5 font-medium">CA证书密码</th>
-              <th className="px-3 py-2.5 font-medium">平台优先级</th>
-              <th className="px-3 py-2.5 font-medium">平台状态</th>
-              <th className="px-3 py-2.5 font-medium">平台权重</th>
-              <th className="px-3 py-2.5 font-medium">备注说明</th>
-              <th className="px-3 py-2.5 font-medium">操作</th>
+              <th className="px-2.5 py-1.5 font-medium">平台名称</th>
+              <th className="px-2.5 py-1.5 font-medium">平台网址</th>
+              <th className="px-2.5 py-1.5 font-medium">登录方式</th>
+              <th className="px-2.5 py-1.5 font-medium">登录账号</th>
+              <th className="px-2.5 py-1.5 font-medium">登录密码</th>
+              <th className="px-2.5 py-1.5 font-medium">是否有CA证书</th>
+              <th className="px-2.5 py-1.5 font-medium">CA证书密码</th>
+              <th className="px-2.5 py-1.5 font-medium">平台优先级</th>
+              <th className="px-2.5 py-1.5 font-medium">平台状态</th>
+              <th className="px-2.5 py-1.5 font-medium">平台权重</th>
+              <th className="px-2.5 py-1.5 font-medium">备注说明</th>
+              <th className="px-2.5 py-1.5 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -444,17 +444,17 @@ export function PlatformsPage() {
                     selected.has(row.id) && "bg-[#fff7f0]",
                   )}
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <input
                       type="checkbox"
                       checked={selected.has(row.id)}
                       onChange={() => toggleOne(row.id)}
                     />
                   </td>
-                  <td className="max-w-[160px] px-3 py-2.5 font-medium text-[#26251e]" title={row.name}>
+                  <td className="max-w-[160px] px-2.5 py-1.5 font-medium text-[#26251e]" title={row.name}>
                     <span className="line-clamp-2">{row.name}</span>
                   </td>
-                  <td className="max-w-[180px] px-3 py-2.5">
+                  <td className="max-w-[180px] px-2.5 py-1.5">
                     {row.url ? (
                       <a
                         href={row.url.startsWith("http") ? row.url : `http://${row.url}`}
@@ -468,32 +468,32 @@ export function PlatformsPage() {
                       "—"
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={loginMethodKind(row.login_method)}>{row.login_method || "—"}</Tag>
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-[#4a4a4a]">
+                  <td className="px-2.5 py-1.5 font-mono text-[11px] text-[#4a4a4a]">
                     {row.login_account || "—"}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-[#4a4a4a]">
+                  <td className="px-2.5 py-1.5 font-mono text-[11px] text-[#4a4a4a]">
                     {row.login_password || "—"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={row.has_ca === "是" ? "ok" : "warn"}>{row.has_ca || "—"}</Tag>
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px] text-[#4a4a4a]">
+                  <td className="px-2.5 py-1.5 font-mono text-[11px] text-[#4a4a4a]">
                     {row.ca_password || "—"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={priorityKind(row.priority)}>{row.priority || "—"}</Tag>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={statusKind(row.status)}>{row.status || "—"}</Tag>
                   </td>
-                  <td className="px-3 py-2.5 text-center text-[#4a4a4a]">{row.weight ?? 0}</td>
-                  <td className="max-w-[200px] truncate px-3 py-2.5 text-[#6b6b6b]" title={row.remark}>
+                  <td className="px-2.5 py-1.5 text-center text-[#4a4a4a]">{row.weight ?? 0}</td>
+                  <td className="max-w-[200px] truncate px-2.5 py-1.5 text-[#6b6b6b]" title={row.remark}>
                     {row.remark || ""}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
+                  <td className="whitespace-nowrap px-2.5 py-1.5">
                     {can(perms, "platform.edit") ? (
                       <button
                         type="button"

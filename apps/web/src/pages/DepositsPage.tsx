@@ -382,24 +382,24 @@ export function DepositsPage() {
 
       {error ? <p className="mt-2 text-[12px] text-red-600">{error}</p> : null}
 
-      <div className="glass-card mt-3 flex-1 overflow-auto">
+      <div className="glass-card mt-3 max-h-[calc(100vh-280px)] overflow-auto">
         <table className="w-full min-w-[1300px] text-left text-[12px]">
-          <thead className="sticky top-0 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+          <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
             <tr>
-              <th className="w-10 px-3 py-2.5">
+              <th className="w-10 px-2.5 py-1.5">
                 <input type="checkbox" checked={allChecked} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2.5 font-medium">序号</th>
-              <th className="px-3 py-2.5 font-medium">申请时间</th>
-              <th className="px-3 py-2.5 font-medium">项目名称</th>
-              <th className="px-3 py-2.5 font-medium">收款单位</th>
-              <th className="px-3 py-2.5 font-medium">平台</th>
-              <th className="px-3 py-2.5 font-medium">金额（万元）</th>
-              <th className="px-3 py-2.5 font-medium">投标员</th>
-              <th className="px-3 py-2.5 font-medium">是否退回</th>
-              <th className="px-3 py-2.5 font-medium">退回联系方式</th>
-              <th className="px-3 py-2.5 font-medium">备注</th>
-              <th className="px-3 py-2.5 font-medium">操作</th>
+              <th className="px-2.5 py-1.5 font-medium">序号</th>
+              <th className="px-2.5 py-1.5 font-medium">申请时间</th>
+              <th className="px-2.5 py-1.5 font-medium">项目名称</th>
+              <th className="px-2.5 py-1.5 font-medium">收款单位</th>
+              <th className="px-2.5 py-1.5 font-medium">平台</th>
+              <th className="px-2.5 py-1.5 font-medium">金额（万元）</th>
+              <th className="px-2.5 py-1.5 font-medium">投标员</th>
+              <th className="px-2.5 py-1.5 font-medium">是否退回</th>
+              <th className="px-2.5 py-1.5 font-medium">退回联系方式</th>
+              <th className="px-2.5 py-1.5 font-medium">备注</th>
+              <th className="px-2.5 py-1.5 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -425,32 +425,32 @@ export function DepositsPage() {
                     selected.has(row.id) && "bg-[#fff7f0]",
                   )}
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleOne(row.id)} />
                   </td>
-                  <td className="px-3 py-2.5 text-[#4a4a4a]">{row.serial_no || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5">{row.apply_time || "—"}</td>
-                  <td className="max-w-[180px] px-3 py-2.5 font-medium text-[#26251e]" title={row.project_name}>
+                  <td className="px-2.5 py-1.5 text-[#4a4a4a]">{row.serial_no || "—"}</td>
+                  <td className="whitespace-nowrap px-2.5 py-1.5">{row.apply_time || "—"}</td>
+                  <td className="max-w-[180px] px-2.5 py-1.5 font-medium text-[#26251e]" title={row.project_name}>
                     <span className="line-clamp-2">{row.project_name || "—"}</span>
                   </td>
-                  <td className="max-w-[160px] truncate px-3 py-2.5" title={row.payee}>
+                  <td className="max-w-[160px] truncate px-2.5 py-1.5" title={row.payee}>
                     {row.payee || "—"}
                   </td>
-                  <td className="px-3 py-2.5">{row.platform || "—"}</td>
-                  <td className="px-3 py-2.5 font-medium text-[#26251e]">{row.amount || "—"}</td>
-                  <td className="px-3 py-2.5">{row.bidder || "—"}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">{row.platform || "—"}</td>
+                  <td className="px-2.5 py-1.5 font-medium text-[#26251e]">{row.amount || "—"}</td>
+                  <td className="px-2.5 py-1.5">{row.bidder || "—"}</td>
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={row.is_returned === "是" ? "ok" : row.is_returned === "否" ? "warn" : "muted"}>
                       {row.is_returned || "—"}
                     </Tag>
                   </td>
-                  <td className="max-w-[140px] truncate px-3 py-2.5 text-[#4a4a4a]" title={row.return_contact}>
+                  <td className="max-w-[140px] truncate px-2.5 py-1.5 text-[#4a4a4a]" title={row.return_contact}>
                     {row.return_contact || "—"}
                   </td>
-                  <td className="max-w-[160px] truncate px-3 py-2.5 text-[#6b6b6b]" title={row.remark}>
+                  <td className="max-w-[160px] truncate px-2.5 py-1.5 text-[#6b6b6b]" title={row.remark}>
                     {row.remark || ""}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
+                  <td className="whitespace-nowrap px-2.5 py-1.5">
                     {can(perms, "deposit.edit") ? (
                       <button
                         type="button"

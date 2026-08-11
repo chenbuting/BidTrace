@@ -387,28 +387,28 @@ export function UsersPage() {
       {error ? <p className="mb-3 text-[12px] text-red-600">{error}</p> : null}
 
       {tab === "users" && canViewUsers ? (
-        <div className="glass-card overflow-auto">
+        <div className="glass-card max-h-[calc(100vh-280px)] overflow-auto">
           <table className="w-full min-w-[720px] text-left text-[12px]">
-            <thead className="border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+            <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
               <tr>
-                <th className="px-3 py-2.5 font-medium">用户</th>
-                <th className="px-3 py-2.5 font-medium">角色</th>
-                <th className="px-3 py-2.5 font-medium">状态</th>
-                <th className="px-3 py-2.5 font-medium">权限数</th>
-                <th className="px-3 py-2.5 font-medium">操作</th>
+                <th className="px-2.5 py-1.5 font-medium">用户</th>
+                <th className="px-2.5 py-1.5 font-medium">角色</th>
+                <th className="px-2.5 py-1.5 font-medium">状态</th>
+                <th className="px-2.5 py-1.5 font-medium">权限数</th>
+                <th className="px-2.5 py-1.5 font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
               {visibleUsers.map((u) => (
                 <tr key={u.id} className="border-b border-black/[0.04]">
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     <p className="font-medium text-[#26251e]">{u.display_name}</p>
                     <p className="font-mono text-[11px] text-[#6b6b6b]">{u.username}</p>
                   </td>
-                  <td className="px-3 py-2">{u.role_label}</td>
-                  <td className="px-3 py-2">{u.is_active ? "启用" : "停用"}</td>
-                  <td className="px-3 py-2">{u.permissions.length}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">{u.role_label}</td>
+                  <td className="px-2.5 py-1.5">{u.is_active ? "启用" : "停用"}</td>
+                  <td className="px-2.5 py-1.5">{u.permissions.length}</td>
+                  <td className="px-2.5 py-1.5">
                     <div className="flex flex-wrap gap-1">
                       {canEditUser ? (
                         <Button variant="ghost" size="sm" onClick={() => openProfile(u)}>
@@ -438,28 +438,28 @@ export function UsersPage() {
           </table>
         </div>
       ) : (
-        <div className="glass-card overflow-auto">
+        <div className="glass-card max-h-[calc(100vh-280px)] overflow-auto">
           <table className="w-full min-w-[720px] text-left text-[12px]">
-            <thead className="border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+            <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
               <tr>
-                <th className="px-3 py-2.5 font-medium">角色</th>
-                <th className="px-3 py-2.5 font-medium">代码</th>
-                <th className="px-3 py-2.5 font-medium">权限数</th>
-                <th className="px-3 py-2.5 font-medium">用户数</th>
-                <th className="px-3 py-2.5 font-medium">操作</th>
+                <th className="px-2.5 py-1.5 font-medium">角色</th>
+                <th className="px-2.5 py-1.5 font-medium">代码</th>
+                <th className="px-2.5 py-1.5 font-medium">权限数</th>
+                <th className="px-2.5 py-1.5 font-medium">用户数</th>
+                <th className="px-2.5 py-1.5 font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
               {roles.map((r) => (
                 <tr key={r.code} className="border-b border-black/[0.04]">
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     <p className="font-medium text-[#26251e]">{r.label}</p>
                     {r.is_system ? <p className="text-[11px] text-[#8a8a8a]">系统内置</p> : null}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{r.code}</td>
-                  <td className="px-3 py-2">{r.perm_count ?? r.permissions?.length ?? "—"}</td>
-                  <td className="px-3 py-2">{r.user_count ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5 font-mono text-[11px]">{r.code}</td>
+                  <td className="px-2.5 py-1.5">{r.perm_count ?? r.permissions?.length ?? "—"}</td>
+                  <td className="px-2.5 py-1.5">{r.user_count ?? "—"}</td>
+                  <td className="px-2.5 py-1.5">
                     <div className="flex flex-wrap gap-1">
                       {canManageRoles ? (
                         <Button variant="ghost" size="sm" onClick={() => openRoleEditor(r)}>

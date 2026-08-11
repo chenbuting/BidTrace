@@ -652,27 +652,27 @@ export function WeeklyPage() {
               合并导出本周已交
             </Button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[13px]">
-              <thead className="bg-black/[0.02] text-[12px] text-[#6b6b6b]">
+          <div className="max-h-[calc(100vh-320px)] overflow-auto">
+            <table className="min-w-full text-left text-[12px]">
+              <thead className="sticky top-0 z-10 bg-[#fafaf8] text-[12px] text-[#6b6b6b]">
                 <tr>
-                  <th className="px-3 py-2.5 font-medium">姓名</th>
-                  <th className="px-3 py-2.5 font-medium">账号</th>
-                  <th className="px-3 py-2.5 font-medium">状态</th>
-                  <th className="px-3 py-2.5 font-medium">提交时间</th>
-                  <th className="px-3 py-2.5 font-medium">操作</th>
+                  <th className="px-2.5 py-1.5 font-medium">姓名</th>
+                  <th className="px-2.5 py-1.5 font-medium">账号</th>
+                  <th className="px-2.5 py-1.5 font-medium">状态</th>
+                  <th className="px-2.5 py-1.5 font-medium">提交时间</th>
+                  <th className="px-2.5 py-1.5 font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {(stats?.items || []).map((row) => (
                   <tr key={row.user_id} className="border-t border-black/[0.05]">
-                    <td className="px-3 py-2.5">{row.display_name}</td>
-                    <td className="px-3 py-2.5 text-[#6b6b6b]">{row.username}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-2.5 py-1.5">{row.display_name}</td>
+                    <td className="px-2.5 py-1.5 text-[#6b6b6b]">{row.username}</td>
+                    <td className="px-2.5 py-1.5">
                       <StatusTag status={row.status} />
                     </td>
-                    <td className="px-3 py-2.5 text-[#6b6b6b]">{row.submitted_at || "—"}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-2.5 py-1.5 text-[#6b6b6b]">{row.submitted_at || "—"}</td>
+                    <td className="px-2.5 py-1.5">
                       <div className="flex gap-2">
                         {row.report_id ? (
                           <Button size="sm" variant="ghost" onClick={() => void openTeamReport(row.report_id)}>

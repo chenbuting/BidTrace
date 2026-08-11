@@ -374,25 +374,25 @@ export function BidProjectsPage() {
 
       {error ? <p className="mt-2 text-[12px] text-red-600">{error}</p> : null}
 
-      <div className="glass-card mt-3 flex-1 overflow-auto">
+      <div className="glass-card mt-3 max-h-[calc(100vh-280px)] overflow-auto">
         <table className="w-full min-w-[1400px] text-left text-[12px]">
-          <thead className="sticky top-0 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+          <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
             <tr>
-              <th className="w-10 px-3 py-2.5">
+              <th className="w-10 px-2.5 py-1.5">
                 <input type="checkbox" checked={allChecked} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2.5 font-medium">序号</th>
-              <th className="px-3 py-2.5 font-medium">开标时间</th>
-              <th className="px-3 py-2.5 font-medium">投标员</th>
-              <th className="px-3 py-2.5 font-medium">项目名称</th>
-              <th className="px-3 py-2.5 font-medium">平台</th>
-              <th className="px-3 py-2.5 font-medium">是否中标</th>
-              <th className="px-3 py-2.5 font-medium">中标金额</th>
-              <th className="px-3 py-2.5 font-medium">是否废标</th>
-              <th className="px-3 py-2.5 font-medium">投标金额</th>
-              <th className="px-3 py-2.5 font-medium">付款方式</th>
-              <th className="px-3 py-2.5 font-medium">备注</th>
-              <th className="px-3 py-2.5 font-medium">操作</th>
+              <th className="px-2.5 py-1.5 font-medium">序号</th>
+              <th className="px-2.5 py-1.5 font-medium">开标时间</th>
+              <th className="px-2.5 py-1.5 font-medium">投标员</th>
+              <th className="px-2.5 py-1.5 font-medium">项目名称</th>
+              <th className="px-2.5 py-1.5 font-medium">平台</th>
+              <th className="px-2.5 py-1.5 font-medium">是否中标</th>
+              <th className="px-2.5 py-1.5 font-medium">中标金额</th>
+              <th className="px-2.5 py-1.5 font-medium">是否废标</th>
+              <th className="px-2.5 py-1.5 font-medium">投标金额</th>
+              <th className="px-2.5 py-1.5 font-medium">付款方式</th>
+              <th className="px-2.5 py-1.5 font-medium">备注</th>
+              <th className="px-2.5 py-1.5 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -418,31 +418,31 @@ export function BidProjectsPage() {
                     selected.has(row.id) && "bg-[#fff7f0]",
                   )}
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleOne(row.id)} />
                   </td>
-                  <td className="px-3 py-2.5 text-[#4a4a4a]">{row.serial_no || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5">{row.open_time || "—"}</td>
-                  <td className="px-3 py-2.5">{row.bidder || "—"}</td>
-                  <td className="max-w-[180px] px-3 py-2.5 font-medium text-[#26251e]" title={row.project_name}>
+                  <td className="px-2.5 py-1.5 text-[#4a4a4a]">{row.serial_no || "—"}</td>
+                  <td className="whitespace-nowrap px-2.5 py-1.5">{row.open_time || "—"}</td>
+                  <td className="px-2.5 py-1.5">{row.bidder || "—"}</td>
+                  <td className="max-w-[180px] px-2.5 py-1.5 font-medium text-[#26251e]" title={row.project_name}>
                     <span className="line-clamp-2">{row.project_name || "—"}</span>
                   </td>
-                  <td className="px-3 py-2.5">{row.platform || "—"}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">{row.platform || "—"}</td>
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={row.is_won === "是" ? "ok" : row.is_won === "否" ? "muted" : "warn"}>
                       {row.is_won || "—"}
                     </Tag>
                   </td>
-                  <td className="px-3 py-2.5">{row.win_amount || "—"}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">{row.win_amount || "—"}</td>
+                  <td className="px-2.5 py-1.5">
                     <Tag kind={row.is_void === "是" ? "warn" : "muted"}>{row.is_void || "—"}</Tag>
                   </td>
-                  <td className="px-3 py-2.5">{row.bid_amount || "—"}</td>
-                  <td className="px-3 py-2.5">{row.payment_method || "—"}</td>
-                  <td className="max-w-[160px] truncate px-3 py-2.5 text-[#6b6b6b]" title={row.remark}>
+                  <td className="px-2.5 py-1.5">{row.bid_amount || "—"}</td>
+                  <td className="px-2.5 py-1.5">{row.payment_method || "—"}</td>
+                  <td className="max-w-[160px] truncate px-2.5 py-1.5 text-[#6b6b6b]" title={row.remark}>
                     {row.remark || ""}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
+                  <td className="whitespace-nowrap px-2.5 py-1.5">
                     {can(perms, "project.edit") ? (
                       <button
                         type="button"

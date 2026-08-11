@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Pagination } from "@/components/ui/pagination";
 import { can, cn } from "@/lib/utils";
 
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
 
 /** 常见操作中文名（未知则显示原 action） */
 const ACTION_LABELS: Record<string, string> = {
@@ -54,6 +54,12 @@ const ACTION_LABELS: Record<string, string> = {
   "deposit.update": "更新保证金",
   "deposit.delete": "删除保证金",
   "deposit.batch_delete": "批量删除保证金",
+  "ai.report_spec_ref": "报告规格分析",
+  "ai.report_spec_export": "导出规格参考包",
+  "ai.settings_system": "保存全局 AI 配置",
+  "ai.settings_user": "保存个人 AI 配置",
+  "ai.settings_user_clear": "清除个人 AI 配置",
+  "ai.weekly_inquiry_append": "周报 AI 询标分析",
 };
 
 function actionLabel(action: string): string {
@@ -137,57 +143,60 @@ export function AuditPage() {
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="mb-5">
-        <h1 className="text-[20px] font-semibold tracking-tight text-[#26251e]">操作日志</h1>
-        <p className="mt-1 text-[13px] text-[#6b6b6b]">查看登录、用户权限与业务操作记录</p>
+    <div className="p-4 md:p-5">
+      <div className="mb-3">
+        <h1 className="text-[18px] font-semibold tracking-tight text-[#26251e]">操作日志</h1>
+        <p className="mt-0.5 text-[12px] text-[#6b6b6b]">查看登录、用户权限与业务操作记录</p>
       </div>
 
-      <div className="rounded-xl border border-black/[0.08] bg-white p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-1">
-            <Label>操作人</Label>
+      <div className="rounded-lg border border-black/[0.08] bg-white px-3 py-2.5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+          <div className="space-y-0.5">
+            <Label className="text-[11px]">操作人</Label>
             <Input
+              className="h-8 text-[12px]"
               value={draft.username}
               placeholder="用户名"
               onChange={(e) => setDraft({ ...draft, username: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && (setFilters({ ...draft }), setPage(1), void load(draft, 1))}
             />
           </div>
-          <div className="space-y-1">
-            <Label>操作类型</Label>
+          <div className="space-y-0.5">
+            <Label className="text-[11px]">操作类型</Label>
             <select
-              className="h-9 w-full rounded-lg border border-black/[0.12] bg-white px-2 text-[13px]"
+              className="h-8 w-full rounded-lg border border-black/[0.12] bg-white px-2 text-[12px]"
               value={draft.action}
               onChange={(e) => setDraft({ ...draft, action: e.target.value })}
             >
               <option value="">全部</option>
               {actionOptions.map((a) => (
                 <option key={a} value={a}>
-                  {actionLabel(a)}（{a}）
+                  {actionLabel(a)}
                 </option>
               ))}
             </select>
           </div>
-          <div className="space-y-1">
-            <Label>对象</Label>
+          <div className="space-y-0.5">
+            <Label className="text-[11px]">对象</Label>
             <Input
+              className="h-8 text-[12px]"
               value={draft.target}
               placeholder="如 user:2 / auth"
               onChange={(e) => setDraft({ ...draft, target: e.target.value })}
             />
           </div>
-          <div className="space-y-1">
-            <Label>开始日期</Label>
+          <div className="space-y-0.5">
+            <Label className="text-[11px]">开始日期</Label>
             <DateInput value={draft.date_from} onChange={(v) => setDraft({ ...draft, date_from: v })} />
           </div>
-          <div className="space-y-1">
-            <Label>结束日期</Label>
+          <div className="space-y-0.5">
+            <Label className="text-[11px]">结束日期</Label>
             <DateInput value={draft.date_to} onChange={(v) => setDraft({ ...draft, date_to: v })} />
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           <Button
+            size="sm"
             onClick={() => {
               setFilters({ ...draft });
               setPage(1);
@@ -198,6 +207,7 @@ export function AuditPage() {
             搜索
           </Button>
           <Button
+            size="sm"
             variant="outline"
             onClick={() => {
               setDraft({ ...EMPTY });
@@ -209,44 +219,58 @@ export function AuditPage() {
             <RotateCcw className="h-3.5 w-3.5" />
             重置
           </Button>
-          <Button variant="ghost" onClick={() => void load(filters, page)} disabled={loading}>
+          <Button size="sm" variant="ghost" onClick={() => void load(filters, page)} disabled={loading}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             刷新
           </Button>
         </div>
       </div>
 
-      {error ? <p className="mt-3 text-[12px] text-red-600">{error}</p> : null}
+      {error ? <p className="mt-2 text-[12px] text-red-600">{error}</p> : null}
 
-      <div className="mt-4 overflow-auto rounded-xl border border-black/[0.08] bg-white">
-        <table className="w-full min-w-[900px] text-left text-[12px]">
-          <thead className="border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+      {/* 表格区域限高，内部滚动，避免整页被拉很长 */}
+      <div className="mt-3 max-h-[calc(100vh-260px)] overflow-auto rounded-lg border border-black/[0.08] bg-white">
+        <table className="w-full min-w-[860px] text-left text-[12px]">
+          <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
             <tr>
-              <th className="px-3 py-2.5 font-medium">时间</th>
-              <th className="px-3 py-2.5 font-medium">操作人</th>
-              <th className="px-3 py-2.5 font-medium">操作</th>
-              <th className="px-3 py-2.5 font-medium">对象</th>
-              <th className="px-3 py-2.5 font-medium">详情</th>
+              <th className="whitespace-nowrap px-2.5 py-1.5 font-medium">时间</th>
+              <th className="whitespace-nowrap px-2.5 py-1.5 font-medium">操作人</th>
+              <th className="whitespace-nowrap px-2.5 py-1.5 font-medium">操作</th>
+              <th className="whitespace-nowrap px-2.5 py-1.5 font-medium">对象</th>
+              <th className="px-2.5 py-1.5 font-medium">详情</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-[#8a8a8a]">
+                <td colSpan={5} className="px-3 py-8 text-center text-[#8a8a8a]">
                   {loading ? "加载中…" : "暂无日志"}
                 </td>
               </tr>
             ) : (
               items.map((a) => (
-                <tr key={a.id} className="border-b border-black/[0.04] align-top">
-                  <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-[#6b6b6b]">{a.created_at}</td>
-                  <td className="px-3 py-2.5 font-medium text-[#26251e]">{a.username || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <p className="text-[#26251e]">{actionLabel(a.action)}</p>
-                    <p className="font-mono text-[10px] text-[#a3a3a3]">{a.action}</p>
+                <tr key={a.id} className="border-b border-black/[0.04] hover:bg-[#fafaf8]">
+                  <td className="whitespace-nowrap px-2.5 py-1.5 tabular-nums text-[#6b6b6b]">
+                    {a.created_at}
                   </td>
-                  <td className="max-w-[180px] break-all px-3 py-2.5 text-[#4a4a4a]">{a.target || "—"}</td>
-                  <td className="max-w-[420px] break-all px-3 py-2.5 text-[#4a4a4a]">{a.detail || "—"}</td>
+                  <td className="whitespace-nowrap px-2.5 py-1.5 font-medium text-[#26251e]">
+                    {a.username || "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-2.5 py-1.5 text-[#26251e]" title={a.action}>
+                    {actionLabel(a.action)}
+                  </td>
+                  <td
+                    className="max-w-[160px] truncate px-2.5 py-1.5 text-[#4a4a4a]"
+                    title={a.target || undefined}
+                  >
+                    {a.target || "—"}
+                  </td>
+                  <td
+                    className="max-w-[360px] truncate px-2.5 py-1.5 text-[#4a4a4a]"
+                    title={a.detail || undefined}
+                  >
+                    {a.detail || "—"}
+                  </td>
                 </tr>
               ))
             )}

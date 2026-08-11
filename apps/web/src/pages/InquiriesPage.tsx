@@ -470,25 +470,25 @@ export function InquiriesPage() {
       {error ? <p className="mt-2 text-[12px] text-red-600">{error}</p> : null}
 
       {/* 表格 */}
-      <div className="glass-card mt-3 flex-1 overflow-auto">
+      <div className="glass-card mt-3 max-h-[calc(100vh-280px)] overflow-auto">
         <table className="w-full min-w-[1280px] text-left text-[12px]">
-          <thead className="sticky top-0 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
+          <thead className="sticky top-0 z-10 border-b border-black/[0.06] bg-[#fafaf8] text-[#6b6b6b]">
             <tr>
-              <th className="w-10 px-3 py-2.5">
+              <th className="w-10 px-2.5 py-1.5">
                 <input type="checkbox" checked={allChecked} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2.5 font-medium">报名时间</th>
-              <th className="px-3 py-2.5 font-medium">平台</th>
-              <th className="px-3 py-2.5 font-medium">项目名</th>
-              <th className="px-3 py-2.5 font-medium">是否投标</th>
-              <th className="px-3 py-2.5 font-medium">是否报名</th>
-              <th className="px-3 py-2.5 font-medium">文件是否领取</th>
-              <th className="px-3 py-2.5 font-medium">是否交费</th>
-              <th className="px-3 py-2.5 font-medium">概况是否完成</th>
-              <th className="px-3 py-2.5 font-medium">未参与原因类别</th>
-              <th className="px-3 py-2.5 font-medium">详细原因</th>
-              <th className="px-3 py-2.5 font-medium">报名截止时间</th>
-              <th className="px-3 py-2.5 font-medium">操作</th>
+              <th className="px-2.5 py-1.5 font-medium">报名时间</th>
+              <th className="px-2.5 py-1.5 font-medium">平台</th>
+              <th className="px-2.5 py-1.5 font-medium">项目名</th>
+              <th className="px-2.5 py-1.5 font-medium">是否投标</th>
+              <th className="px-2.5 py-1.5 font-medium">是否报名</th>
+              <th className="px-2.5 py-1.5 font-medium">文件是否领取</th>
+              <th className="px-2.5 py-1.5 font-medium">是否交费</th>
+              <th className="px-2.5 py-1.5 font-medium">概况是否完成</th>
+              <th className="px-2.5 py-1.5 font-medium">未参与原因类别</th>
+              <th className="px-2.5 py-1.5 font-medium">详细原因</th>
+              <th className="px-2.5 py-1.5 font-medium">报名截止时间</th>
+              <th className="px-2.5 py-1.5 font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -514,40 +514,40 @@ export function InquiriesPage() {
                     selected.has(row.id) && "bg-[#fff7f0]",
                   )}
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <input
                       type="checkbox"
                       checked={selected.has(row.id)}
                       onChange={() => toggleOne(row.id)}
                     />
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-[#4a4a4a]">
+                  <td className="whitespace-nowrap px-2.5 py-1.5 text-[#4a4a4a]">
                     {toIsoDate(row.register_date) || row.register_date || "—"}
                   </td>
-                  <td className="max-w-[140px] truncate px-3 py-2.5" title={row.platform_name}>
+                  <td className="max-w-[140px] truncate px-2.5 py-1.5" title={row.platform_name}>
                     {row.platform_name || "—"}
                   </td>
-                  <td className="max-w-[240px] px-3 py-2.5">
+                  <td className="max-w-[240px] px-2.5 py-1.5">
                     <p className="line-clamp-2 font-medium text-[#26251e]" title={row.project_name}>
                       {row.project_name || "—"}
                     </p>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <YesNoTag value={row.is_bid} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <YesNoTag value={row.is_registered} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <YesNoTag value={row.file_received} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <YesNoTag value={row.is_paid} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <OverviewTag value={row.overview_done} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     {row.skip_reason_category ? (
                       <Tag kind="muted">{row.skip_reason_category}</Tag>
                     ) : (
@@ -555,15 +555,15 @@ export function InquiriesPage() {
                     )}
                   </td>
                   <td
-                    className="max-w-[180px] truncate px-3 py-2.5 text-[#6b6b6b]"
+                    className="max-w-[180px] truncate px-2.5 py-1.5 text-[#6b6b6b]"
                     title={row.skip_reason_detail}
                   >
                     {row.skip_reason_detail || ""}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-[#4a4a4a]">
+                  <td className="whitespace-nowrap px-2.5 py-1.5 text-[#4a4a4a]">
                     {toIsoDate(row.deadline) || row.deadline || "—"}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
+                  <td className="whitespace-nowrap px-2.5 py-1.5">
                     {can(perms, "inquiry.edit") ? (
                       <button
                         type="button"
