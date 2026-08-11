@@ -309,7 +309,7 @@ def build_report_spec_xlsx(result: dict[str, Any]) -> bytes:
     help_rows = [
         ("看哪里", "先看「怎么改-总说明」和「相对原模版改了什么」，再打开对应规格分表。"),
         ("修改说明", "每规格一张：位置/原文/建议改/是否必须。红底=必须，绿底=建议。"),
-        ("检验项目表", "每规格一张：技术要求 + 黄底结果草稿（非正式实测）。"),
+        ("检验项目表", "每规格一张，列同报告第2页：序号/项目/单位/技术要求/结果草稿/评定；黄底为可誊写参考数据。"),
         ("重要", "正式报告必须换实测值；标准号/厚度/电阻以企标国标复核为准。"),
     ]
     _paint(ws_help.cell(3, 1, "项目"), FILL_HEADER, FONT_HEADER)
@@ -432,22 +432,21 @@ def build_report_spec_xlsx(result: dict[str, Any]) -> bytes:
         ws_te = wb.create_sheet(_safe_sheet_title(f"{label}-检验", used_titles))
         ws_te["A1"] = f"试样型号和规格：{spec}"
         _paint(ws_te["A1"], FILL_TITLE, FONT_TITLE)
-        ws_te.merge_cells("A1:G1")
-        ws_te["A2"] = "【黄底=检验结果示例草稿，正式报告请替换为实测值】"
+        ws_te.merge_cells("A1:F1")
+        ws_te["A2"] = "【检验结果列为示例草稿，正式报告请替换为实测值】"
         _paint(ws_te["A2"], FILL_WARN, FONT_WARN)
-        ws_te.merge_cells("A2:G2")
+        ws_te.merge_cells("A2:F2")
         _write_sheet(
             ws_te,
-            ["序号", "检验项目", "单位", "技术要求", "检验结果（示例草稿）", "单项评定", "说明"],
+            ["序号", "检验项目", "单位", "技术要求", "检验结果（示例草稿）", "单项评定"],
             [
                 [
                     t.get("seq") or "",
                     t.get("item") or "",
-                    t.get("unit") or "",
+                    t.get("unit") or "/",
                     t.get("requirement") or "",
                     t.get("result_draft") or "",
                     t.get("rating") or "",
-                    t.get("note") or "",
                 ]
                 for t in te_rows
             ],
@@ -455,6 +454,16 @@ def build_report_spec_xlsx(result: dict[str, Any]) -> bytes:
             draft_col=5,
             rating_col=6,
         )
+        # 与样例一致的填写说明
+        tip_row = 4 + 1 + max(len(te_rows), 0) + 1
+        tip = (
+            "填写说明：1）「检验结果（示例草稿）」按报告可誊写格式给出参考数据/结论，正式出报告前全部换成实测；"
+            "2）单项评定：P符合，F不符合，N不要求判定，/本项无；"
+            "3）技术要求若与企标不一致，以企标为准。"
+        )
+        cell_tip = ws_te.cell(tip_row, 1, tip)
+        _paint(cell_tip, FILL_WARN, FONT_WARN)
+        ws_te.merge_cells(start_row=tip_row, start_column=1, end_row=tip_row, end_column=6)
 
     # 5) 关键参数
     ws3 = wb.create_sheet(_safe_sheet_title("关键参数参考", used_titles))

@@ -490,8 +490,7 @@ def create_ai_router(
         system_prompt = (
             "你是电线电缆（及同类线缆）检验报告改规格专家。"
             "用户上传任意机构/版式的报告 Word 模板（可含多份报告）+ 目标规格（可多条）。"
-            "先识别模板结构，再按目标规格灵活给出改法。输出要「少而准、一眼能懂」，"
-            "对齐「修改说明 + 检验项目表」方向，但不要堆砌次要字段。"
+            "先识别模板里的检验项目表结构与口径，再按目标规格生成可对照填写的参考包。"
             "必须只输出 JSON，不要 Markdown。"
             "格式："
             '{"summary":"一两句总览",'
@@ -503,24 +502,33 @@ def create_ai_router(
             '"changes":[{"target_spec":"目标规格","position":"封面-样品名称等",'
             '"old_value":"原文","new_value":"建议改为","must_change":"必须|建议",'
             '"note":"短备注"}],'
-            '"test_items":[{"target_spec":"目标规格","seq":"1.1","item":"检验项目",'
-            '"unit":"单位","requirement":"技术要求","result_draft":"示例草稿",'
-            '"rating":"P|F|N|/","note":"短说明"}],'
+            '"test_items":[{"target_spec":"目标规格","seq":"1或1.1或空",'
+            '"item":"检验项目","unit":"单位或/","requirement":"技术要求",'
+            '"result_draft":"检验结果示例草稿","rating":"P|F|N|/","note":""}],'
             '"key_params":[{"target_spec":"目标规格","param":"参数名",'
             '"ref_value":"参考值","note":"依据"}],'
             '"steps":["步骤"]}'
-            "约束（重要）："
-            "1) relative_diffs：每个规格 3～8 条「相对原模版关键改动」，像对照表一样简洁；"
-            "2) changes：每个规格 6～12 条，优先必须项（名称/型号/规格/依据/电阻/厚度/耐压/机械性能/芯数标志）；"
-            "3) test_items：每个规格 8～15 行，对齐模板检验项目；result_draft 仅示例并写明非正式实测；"
-            "4) key_params 每个规格不超过 4 条；steps 6～8 步；warnings ≤3；"
-            "5) 模板字段以当前文档为准，勿硬套固定实验室话术；不确定写入 warnings；"
-            "6) 规格不写「米」；控制电缆 750V 可建议 450/750V；不要编造实测数据与委托方。"
+            "【核心：检验数据必须填好，且通用】"
+            "1) 不要只输出空表或把 result_draft 留空；凡是可测/可判定项目都必须给出示例草稿值。"
+            "2) 通用原则（适用于任意模板/任意型号，不绑定某一固定样例）："
+            "根据目标规格解析电压、芯数、截面，并结合模板原有项目与行业常用标准推断技术要求与合格示例结果；"
+            "导体直流电阻优先按截面查 GB/T3956（或模板原标准口径）给「最大xxx」，结果草稿填略优于上限的数值；"
+            "多芯/多相时结果用空格分隔多值，数量与芯数/线芯数匹配；"
+            "耐压写「未击穿」或按芯数重复；标志类写具体颜色/编号示例；材料写「铜」等。"
+            "3) 分组标题行（结构尺寸/电性能/机械性能等）四列填「/」；其余行禁止 result_draft 为空或只写「需实测/待测」。"
+            "4) 技术要求写报告口吻：最小/最大/不击穿/应有…；结果草稿写可直接誊进报告的短数据，不要长句分析。"
+            "5) 单项评定：合格示例 P；不判定 N；无此项 /。"
+            "6) 每个规格 test_items 约 12～22 行，覆盖模板已有大类；relative_diffs 3～8；changes 6～12；steps 6～8；warnings≤3。"
+            "7) 明确：这些是「合格示例草稿」方便对照格式，不是实验室真实出具；勿伪造委托方/印章。"
+            "8) 规格不写「米」；用户写 750V 控制电缆可建议规范为 450/750V。"
         )
         user_prompt = (
             f"【目标规格】\n{specs_text}\n\n"
             f"【报告模板全文】\n{template_text}\n\n"
-            "请输出简洁完整的 JSON 参考包（必须含 relative_diffs、matches、changes、test_items、key_params、steps）。"
+            "请输出 JSON 参考包。"
+            "特别要求：test_items 必须按该模板的检验项目结构填写，并对每个可测项目给出具体的 "
+            "requirement + result_draft + rating（结果草稿要有参考数值/结论，多芯多值空格分隔）；"
+            "不要留空，不要只给文字说明不给数据。"
         )
 
         try:
@@ -543,6 +551,29 @@ def create_ai_router(
         pack = normalize_report_spec_result(parsed)
         if not pack.get("changes") and not pack.get("test_items") and not pack.get("matches"):
             raise HTTPException(status_code=400, detail="AI 未生成有效参考内容，请重试或换更清晰的规格描述")
+
+        # 检查检验结果草稿是否大量空缺（分组行「/」除外）
+        empty_draft = 0
+        filled_draft = 0
+        for t in pack.get("test_items") or []:
+            item = str(t.get("item") or "").strip()
+            draft = str(t.get("result_draft") or "").strip()
+            req = str(t.get("requirement") or "").strip()
+            if not item:
+                continue
+            if draft in {"", "/", "／"} and req in {"", "/", "／"}:
+                continue  # 分组行
+            if draft in {"", "/", "／"} or draft in {"需实测", "待测", "待填写", "—", "-"}:
+                empty_draft += 1
+            else:
+                filled_draft += 1
+        if empty_draft > 0:
+            tips = list(pack.get("warnings") or [])
+            tips.append(
+                f"有 {empty_draft} 项检验结果草稿未给出具体参考值（已填 {filled_draft} 项）；"
+                "可再点一次生成，或把规格写得更完整（电压/芯数/截面）。"
+            )
+            pack["warnings"] = tips[:5]
 
         q.add_audit(
             int(user["id"]),

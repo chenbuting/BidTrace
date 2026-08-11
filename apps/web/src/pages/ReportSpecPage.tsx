@@ -335,24 +335,22 @@ export function ReportSpecPage() {
                   "检验项目",
                   "单位",
                   "技术要求",
-                  "结果草稿",
-                  "评定",
-                  "说明",
+                  "检验结果（示例草稿）",
+                  "单项评定",
                 ]}
                 rows={pack.test_items.map((t) => [
                   t.target_spec,
                   t.seq,
                   t.item,
-                  t.unit,
+                  t.unit || "/",
                   t.requirement,
                   t.result_draft,
                   t.rating,
-                  t.note,
                 ])}
+                highlightCol={5}
               />
               <p className="mt-2 text-[11px] text-[#8a8a8a]">
-                「结果草稿」仅为格式示例，正式报告必须换成实验室实测值。导出 Excel
-                时会按规格拆成独立工作表。
+                「检验结果（示例草稿）」按报告可填写格式给出参考数据（多芯多值空格分隔）；正式报告必须换成实测值。
               </p>
             </Section>
           ) : null}
