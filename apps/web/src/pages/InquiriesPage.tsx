@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
   Download,
+  Image as ImageIcon,
   Pencil,
   Plus,
   RefreshCw,
@@ -29,6 +30,7 @@ import {
   type StatsBackupInfo,
   type UserInfo,
 } from "@/api/bidtrace";
+import { InquiryDailyReportDialog } from "@/components/InquiryDailyReportDialog";
 import { StatsImportDialog } from "@/components/StatsImportDialog";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -117,6 +119,7 @@ export function InquiriesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importFile, setImportFile] = useState<File | null>(null);
   const [backup, setBackup] = useState<StatsBackupInfo | null>(null);
+  const [dailyOpen, setDailyOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refreshBackup = async () => {
@@ -450,13 +453,19 @@ export function InquiriesPage() {
             </>
           ) : null}
           {can(perms, "inquiry.export") ? (
-            <Button
-              className="bg-[#f5c542] text-[#26251e] hover:bg-[#efb820]"
-              onClick={() => void onExport()}
-            >
-              <Download className="h-3.5 w-3.5" />
-              导出
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setDailyOpen(true)}>
+                <ImageIcon className="h-3.5 w-3.5" />
+                导出日报图
+              </Button>
+              <Button
+                className="bg-[#f5c542] text-[#26251e] hover:bg-[#efb820]"
+                onClick={() => void onExport()}
+              >
+                <Download className="h-3.5 w-3.5" />
+                导出
+              </Button>
+            </>
           ) : null}
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[#6b6b6b]">
@@ -725,6 +734,13 @@ export function InquiriesPage() {
           }}
         />
       ) : null}
+
+      <InquiryDailyReportDialog
+        open={dailyOpen}
+        onClose={() => setDailyOpen(false)}
+        initialDate={filters.date_from || filters.date_to || todayIso()}
+        canExport={can(perms, "inquiry.export")}
+      />
     </div>
   );
 }

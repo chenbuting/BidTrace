@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sys
 from pathlib import Path
@@ -1130,6 +1131,26 @@ def api_inquiries_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=inquiries_template.xlsx"},
     )
+
+
+@app.get("/api/inquiries/daily-report")
+def api_inquiry_daily_report(
+    day: str = Query(..., alias="date", description="报名日 YYYY-MM-DD"),
+    user: dict[str, Any] = Depends(require_login),
+) -> dict[str, Any]:
+    """单日询标汇总，供前端导出领导汇报图。"""
+    perms = user["_perms"]
+    if not (has_perm(perms, "inquiry.view_all") or has_perm(perms, "inquiry.view_own")):
+        raise HTTPException(status_code=403, detail="无权限查看询标")
+    day = (day or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD")
+    only_uid = None if has_perm(perms, "inquiry.view_all") else int(user["id"])
+    try:
+        data = q.inquiry_daily_report(day, only_user_id=only_uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": data}
 
 
 @app.get("/api/inquiries/export")

@@ -341,6 +341,40 @@ export async function exportInquiries(params: Record<string, string | number> = 
   return res.blob();
 }
 
+/** 询标单日报表（导出领导汇报图用） */
+export type InquiryDailyReport = {
+  date: string;
+  total: number;
+  bid_yes: number;
+  bid_no: number;
+  bid_wait: number;
+  bid_empty: number;
+  registered: number;
+  file_ok: number;
+  paid_ok: number;
+  overview_ok: number;
+  platforms: { name: string; count: number }[];
+  follow_total: number;
+  follow_items: {
+    platform_name: string;
+    project_name: string;
+    is_bid: string;
+    is_registered: string;
+    deadline: string;
+  }[];
+  bid_yes_items: {
+    platform_name: string;
+    project_name: string;
+    is_registered: string;
+    deadline: string;
+  }[];
+  bid_yes_total: number;
+};
+
+export async function fetchInquiryDailyReport(date: string) {
+  return api<{ item: InquiryDailyReport }>(`/api/inquiries/daily-report?date=${encodeURIComponent(date)}`);
+}
+
 export async function downloadInquiryTemplate() {
   const res = await fetch("/api/inquiries/template", { credentials: "same-origin" });
   if (!res.ok) throw new Error("下载模板失败");
