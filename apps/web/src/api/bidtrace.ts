@@ -341,6 +341,17 @@ export async function exportInquiries(params: Record<string, string | number> = 
   return res.blob();
 }
 
+export type InquiryDailyReportItem = {
+  platform_name: string;
+  project_name: string;
+  is_bid: string;
+  is_registered: string;
+  deadline: string;
+  skip_reason_category?: string;
+  skip_reason_detail?: string;
+  reason_text?: string;
+};
+
 /** 询标单日报表（导出领导汇报图用） */
 export type InquiryDailyReport = {
   date: string;
@@ -355,20 +366,11 @@ export type InquiryDailyReport = {
   overview_ok: number;
   platforms: { name: string; count: number }[];
   follow_total: number;
-  follow_items: {
-    platform_name: string;
-    project_name: string;
-    is_bid: string;
-    is_registered: string;
-    deadline: string;
-  }[];
-  bid_yes_items: {
-    platform_name: string;
-    project_name: string;
-    is_registered: string;
-    deadline: string;
-  }[];
+  follow_items: InquiryDailyReportItem[];
+  bid_yes_items: InquiryDailyReportItem[];
   bid_yes_total: number;
+  bid_no_items: InquiryDailyReportItem[];
+  bid_no_total: number;
 };
 
 export async function fetchInquiryDailyReport(date: string) {

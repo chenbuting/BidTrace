@@ -147,15 +147,26 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                   {/* KPI */}
                   <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
                     {[
-                      { label: "今日新增", value: data.total, tone: "text-[#26251e]" },
-                      { label: "投标·是", value: data.bid_yes, tone: "text-[#f54e00]" },
-                      { label: "投标·否", value: data.bid_no, tone: "text-[#6b6b6b]" },
-                      { label: "待确定", value: data.bid_wait, tone: "text-[#b54708]" },
-                      { label: "未填写", value: data.bid_empty, tone: "text-[#b54708]" },
-                      { label: "已报名", value: data.registered, tone: "text-[#067647]" },
+                      { label: "今日新增", value: data.total, tone: "text-[#26251e]", hot: false },
+                      { label: "投标·是", value: data.bid_yes, tone: "text-[#f54e00]", hot: false },
+                      { label: "投标·否", value: data.bid_no, tone: "text-[#6b6b6b]", hot: false },
+                      { label: "待确定", value: data.bid_wait, tone: "text-[#f54e00]", hot: true },
+                      { label: "未填写", value: data.bid_empty, tone: "text-[#8a8a8a]", hot: false },
+                      { label: "已报名", value: data.registered, tone: "text-[#067647]", hot: false },
                     ].map((k) => (
-                      <div key={k.label} className="rounded-xl border border-black/[0.08] bg-white px-3 py-3">
-                        <p className="text-[11px] text-[#6b6b6b]">{k.label}</p>
+                      <div
+                        key={k.label}
+                        className={cn(
+                          "rounded-xl border bg-white px-3 py-3",
+                          k.hot
+                            ? "border-[#f54e00]/50 bg-[#fff7f3] ring-2 ring-[#f54e00]/15"
+                            : "border-black/[0.08]",
+                        )}
+                      >
+                        <p className={cn("text-[11px]", k.hot ? "font-semibold text-[#f54e00]" : "text-[#6b6b6b]")}>
+                          {k.label}
+                          {k.hot ? " · 需确认" : ""}
+                        </p>
                         <p className={cn("mt-1 text-[22px] font-semibold tabular-nums", k.tone)}>{k.value}</p>
                       </div>
                     ))}
@@ -207,9 +218,52 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                         ))}
                       </div>
                       <p className="mt-3 text-[11px] leading-relaxed text-[#8a8a8a]">
-                        待跟进（投标待确定/未填）：{data.follow_total} 条；拟投标（是）：{data.bid_yes_total} 条
+                        待领导确认（待确定）：{data.follow_total} 条；拟投标：{data.bid_yes_total} 条；未投标：
+                        {data.bid_no_total ?? data.bid_no} 条
                       </p>
                     </div>
+                  </div>
+
+                  {/* 待确定：领导未确认，最醒目，放最前 */}
+                  <div className="rounded-xl border-2 border-[#f54e00]/55 bg-[#fff7f3] p-4 shadow-[0_0_0_3px_rgba(245,78,0,0.08)]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-[#f54e00] px-2 py-0.5 text-[11px] font-semibold text-white">
+                        需领导确认
+                      </span>
+                      <h3 className="text-[14px] font-semibold text-[#f54e00]">
+                        待确定项目（{data.follow_total}）
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#b54708]">
+                      是否投标=待确定，请领导尽快拍板；含原因说明（有则显示）
+                    </p>
+                    {data.follow_items.length === 0 ? (
+                      <p className="mt-3 text-[12px] text-[#8a8a8a]">当日暂无待确定项目</p>
+                    ) : (
+                      <ul className="mt-3 space-y-2">
+                        {data.follow_items.map((it, idx) => (
+                          <li
+                            key={`wait-${it.project_name}-${idx}`}
+                            className="rounded-lg border border-[#f54e00]/25 bg-white px-3 py-2.5 text-[12px]"
+                          >
+                            <div className="flex gap-2">
+                              <span className="w-4 shrink-0 font-semibold text-[#f54e00]">{idx + 1}</span>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-[#26251e]">
+                                  {it.project_name || "（未填项目名）"}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-[#6b6b6b]">
+                                  {it.platform_name || "未填平台"} · 报名：{it.is_registered} · 截止：{it.deadline}
+                                </p>
+                                <p className="mt-1 text-[12px] text-[#b54708]">
+                                  原因：{it.reason_text || "台账未填写原因"}
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
 
                   {/* 拟投标 */}
@@ -217,7 +271,7 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                     <h3 className="text-[13px] font-semibold">
                       拟投标项目
                       <span className="ml-2 text-[11px] font-normal text-[#8a8a8a]">
-                        是否投标=是（最多 8 条）
+                        是否投标=是（共 {data.bid_yes_items.length} 条）
                       </span>
                     </h3>
                     {data.bid_yes_items.length === 0 ? (
@@ -225,10 +279,10 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                     ) : (
                       <ul className="mt-2 divide-y divide-black/[0.05]">
                         {data.bid_yes_items.map((it, idx) => (
-                          <li key={`${it.project_name}-${idx}`} className="flex gap-3 py-2 text-[12px]">
+                          <li key={`yes-${it.project_name}-${idx}`} className="flex gap-3 py-2 text-[12px]">
                             <span className="w-4 shrink-0 text-[#8a8a8a]">{idx + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium text-[#26251e]">{it.project_name || "（未填项目名）"}</p>
+                              <p className="font-medium text-[#26251e]">{it.project_name || "（未填项目名）"}</p>
                               <p className="mt-0.5 text-[11px] text-[#6b6b6b]">
                                 {it.platform_name || "未填平台"} · 报名：{it.is_registered} · 截止：{it.deadline}
                               </p>
@@ -239,26 +293,28 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                     )}
                   </div>
 
-                  {/* 待跟进 */}
+                  {/* 未投标：当天全部列出 */}
                   <div className="rounded-xl border border-black/[0.08] bg-white p-4">
                     <h3 className="text-[13px] font-semibold">
-                      待跟进项目
+                      未投标项目
                       <span className="ml-2 text-[11px] font-normal text-[#8a8a8a]">
-                        待确定/未填写（共 {data.follow_total}，列表最多 10 条）
+                        是否投标=否（共 {data.bid_no_items?.length ?? 0} 条，全部列出）
                       </span>
                     </h3>
-                    {data.follow_items.length === 0 ? (
-                      <p className="mt-3 text-[12px] text-[#8a8a8a]">当日暂无待跟进项目</p>
+                    {(data.bid_no_items?.length ?? 0) === 0 ? (
+                      <p className="mt-3 text-[12px] text-[#8a8a8a]">当日暂无未投标项目</p>
                     ) : (
                       <ul className="mt-2 divide-y divide-black/[0.05]">
-                        {data.follow_items.map((it, idx) => (
-                          <li key={`${it.project_name}-${idx}`} className="flex gap-3 py-2 text-[12px]">
+                        {(data.bid_no_items || []).map((it, idx) => (
+                          <li key={`no-${it.project_name}-${idx}`} className="flex gap-3 py-2 text-[12px]">
                             <span className="w-4 shrink-0 text-[#8a8a8a]">{idx + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium text-[#26251e]">{it.project_name || "（未填项目名）"}</p>
+                              <p className="font-medium text-[#26251e]">{it.project_name || "（未填项目名）"}</p>
                               <p className="mt-0.5 text-[11px] text-[#6b6b6b]">
-                                {it.platform_name || "未填平台"} · 投标：{it.is_bid} · 报名：{it.is_registered} · 截止：
-                                {it.deadline}
+                                {it.platform_name || "未填平台"} · 报名：{it.is_registered} · 截止：{it.deadline}
+                              </p>
+                              <p className="mt-1 text-[12px] text-[#4a4a4a]">
+                                原因：{it.reason_text || "台账未填写原因"}
                               </p>
                             </div>
                           </li>

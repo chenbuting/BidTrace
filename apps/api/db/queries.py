@@ -1388,10 +1388,9 @@ def inquiry_daily_report(
     day: str,
     *,
     only_user_id: Optional[int] = None,
-    follow_limit: int = 10,
     platform_limit: int = 6,
 ) -> dict[str, Any]:
-    """按报名日汇总询标日报：KPI、平台分布、待跟进清单（供导出领导汇报图）。"""
+    """按报名日汇总询标日报：KPI、平台分布、待确定/拟投标/未投标清单（供导出领导汇报图）。"""
     day = (day or "").strip()
     if not day:
         raise ValueError("日期不能为空")
@@ -1401,6 +1400,25 @@ def inquiry_daily_report(
         clauses.append("created_by = ?")
         params.append(only_user_id)
     where = " WHERE " + " AND ".join(clauses)
+
+    def _reason(r: dict[str, Any]) -> str:
+        cat = str(r.get("skip_reason_category") or "").strip()
+        detail = str(r.get("skip_reason_detail") or "").strip()
+        if cat and detail:
+            return f"{cat}：{detail}"
+        return cat or detail or ""
+
+    def _row_brief(r: dict[str, Any]) -> dict[str, str]:
+        return {
+            "platform_name": str(r.get("platform_name") or "").strip(),
+            "project_name": str(r.get("project_name") or "").strip(),
+            "is_bid": str(r.get("is_bid") or "").strip() or "未填写",
+            "is_registered": str(r.get("is_registered") or "").strip() or "未填写",
+            "deadline": str(r.get("deadline") or "").strip() or "未填写",
+            "skip_reason_category": str(r.get("skip_reason_category") or "").strip(),
+            "skip_reason_detail": str(r.get("skip_reason_detail") or "").strip(),
+            "reason_text": _reason(r),
+        }
 
     conn = get_conn()
     try:
@@ -1429,42 +1447,11 @@ def inquiry_daily_report(
             for k, v in sorted(plat_counter.items(), key=lambda x: (-x[1], x[0]))[:platform_limit]
         ]
 
-        follow_items: list[dict[str, str]] = []
-        for r in items:
-            bid = str(r.get("is_bid") or "").strip()
-            if bid not in ("", "待确定"):
-                continue
-            follow_items.append(
-                {
-                    "platform_name": str(r.get("platform_name") or "").strip(),
-                    "project_name": str(r.get("project_name") or "").strip(),
-                    "is_bid": bid or "未填写",
-                    "is_registered": str(r.get("is_registered") or "").strip() or "未填写",
-                    "deadline": str(r.get("deadline") or "").strip() or "未填写",
-                }
-            )
-            if len(follow_items) >= follow_limit:
-                break
-        follow_total = sum(
-            1
-            for r in items
-            if str(r.get("is_bid") or "").strip() in ("", "待确定")
-        )
-
-        bid_yes_items: list[dict[str, str]] = []
-        for r in items:
-            if str(r.get("is_bid") or "").strip() != "是":
-                continue
-            bid_yes_items.append(
-                {
-                    "platform_name": str(r.get("platform_name") or "").strip(),
-                    "project_name": str(r.get("project_name") or "").strip(),
-                    "is_registered": str(r.get("is_registered") or "").strip() or "未填写",
-                    "deadline": str(r.get("deadline") or "").strip() or "未填写",
-                }
-            )
-            if len(bid_yes_items) >= 8:
-                break
+        # 待确定：需领导确认，全部列出（不含未填写）
+        follow_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "待确定"]
+        # 拟投标 / 未投标：当天全部列出
+        bid_yes_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "是"]
+        bid_no_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "否"]
 
         return {
             "date": day,
@@ -1478,10 +1465,12 @@ def inquiry_daily_report(
             "paid_ok": paid_ok,
             "overview_ok": overview_ok,
             "platforms": platforms,
-            "follow_total": follow_total,
+            "follow_total": len(follow_items),
             "follow_items": follow_items,
             "bid_yes_items": bid_yes_items,
             "bid_yes_total": bid_yes,
+            "bid_no_items": bid_no_items,
+            "bid_no_total": bid_no,
         }
     finally:
         conn.close()
