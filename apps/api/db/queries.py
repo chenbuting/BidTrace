@@ -1390,7 +1390,7 @@ def inquiry_daily_report(
     only_user_id: Optional[int] = None,
     platform_limit: int = 6,
 ) -> dict[str, Any]:
-    """按报名日汇总询标日报：KPI、平台分布、待确定/拟投标/未投标清单（供导出领导汇报图）。"""
+    """按报名日汇总询标日报：KPI/拟投/未投看当天；待确定含当天+历史未闭环。"""
     day = (day or "").strip()
     if not day:
         raise ValueError("日期不能为空")
@@ -1408,7 +1408,8 @@ def inquiry_daily_report(
             return f"{cat}：{detail}"
         return cat or detail or ""
 
-    def _row_brief(r: dict[str, Any]) -> dict[str, str]:
+    def _row_brief(r: dict[str, Any], *, carryover: bool = False) -> dict[str, Any]:
+        reg = str(r.get("register_date") or "").strip()
         return {
             "platform_name": str(r.get("platform_name") or "").strip(),
             "project_name": str(r.get("project_name") or "").strip(),
@@ -1418,6 +1419,8 @@ def inquiry_daily_report(
             "skip_reason_category": str(r.get("skip_reason_category") or "").strip(),
             "skip_reason_detail": str(r.get("skip_reason_detail") or "").strip(),
             "reason_text": _reason(r),
+            "register_date": reg,
+            "is_carryover": bool(carryover),
         }
 
     conn = get_conn()
@@ -1447,9 +1450,28 @@ def inquiry_daily_report(
             for k, v in sorted(plat_counter.items(), key=lambda x: (-x[1], x[0]))[:platform_limit]
         ]
 
-        # 待确定：需领导确认，全部列出（不含未填写）
-        follow_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "待确定"]
-        # 拟投标 / 未投标：当天全部列出
+        # 当天待确定
+        follow_today = [
+            _row_brief(r, carryover=False)
+            for r in items
+            if str(r.get("is_bid") or "").strip() == "待确定"
+        ]
+        # 历史仍待确定（报名日早于所选日），一并带给领导确认
+        hist_clauses = ["is_bid = ?", "register_date != ''", "register_date < ?"]
+        hist_params: list[Any] = ["待确定", day]
+        if only_user_id is not None:
+            hist_clauses.append("created_by = ?")
+            hist_params.append(only_user_id)
+        hist_where = " WHERE " + " AND ".join(hist_clauses)
+        hist_rows = conn.execute(
+            f"SELECT * FROM inquiries{hist_where} ORDER BY register_date ASC, id ASC",
+            hist_params,
+        ).fetchall()
+        follow_carryover = [_row_brief(_row_to_dict(r), carryover=True) for r in hist_rows]
+        # 列表：先历史积压，再当天新增，方便领导先清旧账
+        follow_items = follow_carryover + follow_today
+
+        # 拟投标 / 未投标：仍只看当天
         bid_yes_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "是"]
         bid_no_items = [_row_brief(r) for r in items if str(r.get("is_bid") or "").strip() == "否"]
 
@@ -1466,6 +1488,8 @@ def inquiry_daily_report(
             "overview_ok": overview_ok,
             "platforms": platforms,
             "follow_total": len(follow_items),
+            "follow_today_total": len(follow_today),
+            "follow_carryover_total": len(follow_carryover),
             "follow_items": follow_items,
             "bid_yes_items": bid_yes_items,
             "bid_yes_total": bid_yes,

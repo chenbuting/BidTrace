@@ -163,9 +163,8 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                             : "border-black/[0.08]",
                         )}
                       >
-                        <p className={cn("text-[11px]", k.hot ? "font-semibold text-[#f54e00]" : "text-[#6b6b6b]")}>
+                        <p className={cn("text-[11px]", k.hot ? "font-medium text-[#b54708]" : "text-[#6b6b6b]")}>
                           {k.label}
-                          {k.hot ? " · 需确认" : ""}
                         </p>
                         <p className={cn("mt-1 text-[22px] font-semibold tabular-nums", k.tone)}>{k.value}</p>
                       </div>
@@ -217,47 +216,62 @@ export function InquiryDailyReportDialog({ open, onClose, initialDate, canExport
                           </div>
                         ))}
                       </div>
-                      <p className="mt-3 text-[11px] leading-relaxed text-[#8a8a8a]">
-                        待领导确认（待确定）：{data.follow_total} 条；拟投标：{data.bid_yes_total} 条；未投标：
+                      <p className="mt-3 text-[11px] leading-relaxed text-[#6b6b6b]">
+                        待确定：共 {data.follow_total} 条（本日 {data.follow_today_total ?? 0} · 此前未结{" "}
+                        {data.follow_carryover_total ?? 0}）；拟投标：{data.bid_yes_total} 条；未投标：
                         {data.bid_no_total ?? data.bid_no} 条
                       </p>
                     </div>
                   </div>
 
-                  {/* 待确定：领导未确认，最醒目，放最前 */}
-                  <div className="rounded-xl border-2 border-[#f54e00]/55 bg-[#fff7f3] p-4 shadow-[0_0_0_3px_rgba(245,78,0,0.08)]">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-[#f54e00] px-2 py-0.5 text-[11px] font-semibold text-white">
-                        需领导确认
+                  {/* 待确定：当天 + 历史延续，样式醒目但措辞自然 */}
+                  <div className="rounded-xl border-2 border-[#f54e00]/40 bg-[#fff7f3] p-4">
+                    <h3 className="text-[14px] font-semibold text-[#26251e]">
+                      待确定项目
+                      <span className="ml-2 text-[12px] font-normal text-[#6b6b6b]">
+                        共 {data.follow_total} 条
+                        {typeof data.follow_today_total === "number" ||
+                        typeof data.follow_carryover_total === "number"
+                          ? `（本日 ${data.follow_today_total ?? 0} · 此前未结 ${data.follow_carryover_total ?? 0}）`
+                          : ""}
                       </span>
-                      <h3 className="text-[14px] font-semibold text-[#f54e00]">
-                        待确定项目（{data.follow_total}）
-                      </h3>
-                    </div>
-                    <p className="mt-1 text-[11px] text-[#b54708]">
-                      是否投标=待确定，请领导尽快拍板；含原因说明（有则显示）
+                    </h3>
+                    <p className="mt-1 text-[11px] text-[#6b6b6b]">
+                      投标意向尚待明确的项目一览（含报名日与说明）
                     </p>
                     {data.follow_items.length === 0 ? (
-                      <p className="mt-3 text-[12px] text-[#8a8a8a]">当日暂无待确定项目</p>
+                      <p className="mt-3 text-[12px] text-[#8a8a8a]">本日暂无待确定项目</p>
                     ) : (
                       <ul className="mt-3 space-y-2">
                         {data.follow_items.map((it, idx) => (
                           <li
                             key={`wait-${it.project_name}-${idx}`}
-                            className="rounded-lg border border-[#f54e00]/25 bg-white px-3 py-2.5 text-[12px]"
+                            className="rounded-lg border border-[#f54e00]/20 bg-white px-3 py-2.5 text-[12px]"
                           >
                             <div className="flex gap-2">
-                              <span className="w-4 shrink-0 font-semibold text-[#f54e00]">{idx + 1}</span>
+                              <span className="w-4 shrink-0 font-medium text-[#8a8a8a]">{idx + 1}</span>
                               <div className="min-w-0 flex-1">
-                                <p className="font-semibold text-[#26251e]">
-                                  {it.project_name || "（未填项目名）"}
-                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <p className="font-semibold text-[#26251e]">
+                                    {it.project_name || "（未填项目名）"}
+                                  </p>
+                                  {it.is_carryover ? (
+                                    <span className="rounded bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-[#6b6b6b]">
+                                      此前未结
+                                    </span>
+                                  ) : (
+                                    <span className="rounded bg-[#fff1eb] px-1.5 py-0.5 text-[10px] text-[#b54708]">
+                                      本日
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="mt-0.5 text-[11px] text-[#6b6b6b]">
-                                  {it.platform_name || "未填平台"} · 报名：{it.is_registered} · 截止：{it.deadline}
+                                  报名日：{it.register_date || "—"} · {it.platform_name || "未填平台"} · 报名：
+                                  {it.is_registered} · 截止：{it.deadline}
                                 </p>
-                                <p className="mt-1 text-[12px] text-[#b54708]">
-                                  原因：{it.reason_text || "台账未填写原因"}
-                                </p>
+                                {it.reason_text ? (
+                                  <p className="mt-1 text-[12px] text-[#4a4a4a]">说明：{it.reason_text}</p>
+                                ) : null}
                               </div>
                             </div>
                           </li>

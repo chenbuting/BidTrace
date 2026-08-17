@@ -350,6 +350,9 @@ export type InquiryDailyReportItem = {
   skip_reason_category?: string;
   skip_reason_detail?: string;
   reason_text?: string;
+  register_date?: string;
+  /** 历史积压：报名日早于所选日报日，但仍是待确定 */
+  is_carryover?: boolean;
 };
 
 /** 询标单日报表（导出领导汇报图用） */
@@ -366,6 +369,8 @@ export type InquiryDailyReport = {
   overview_ok: number;
   platforms: { name: string; count: number }[];
   follow_total: number;
+  follow_today_total?: number;
+  follow_carryover_total?: number;
   follow_items: InquiryDailyReportItem[];
   bid_yes_items: InquiryDailyReportItem[];
   bid_yes_total: number;
